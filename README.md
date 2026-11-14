@@ -1,6 +1,6 @@
 # eso-box
 
-**One Claude Code session, every device.** An always-on machine at home (the "box") runs your
+**Carry your Claude Code sessions across all your devices.** An always-on machine at home (the "box") runs your
 Claude Code sessions. Your laptop opens them over SSH, your phone through the Claude app, and you
 can switch between them mid-conversation: start on the laptop, carry on from the phone, finish on
 the laptop.
@@ -18,6 +18,33 @@ tmux session, and the phone attaches through Remote Control. Both see and drive 
 
 eso-box is a small set of scripts and settings on top of tmux, Tailscale and Claude Code's own
 features. It is not affiliated with Anthropic.
+
+## Features
+
+- **One session, every device.** Start Claude on your laptop, answer it from your phone in the
+  Claude app, finish back at your desk. It's the same live conversation, not a copy.
+- **Pick up phone sessions at your desk.** Sessions you start in the Claude app run on the box
+  too; `eso-phone` gives you the `/resume` line that continues one in a terminal.
+- **SSH from any laptop.** `box` opens a session and `boxls` lists them, in bash or zsh (Linux,
+  macOS, WSL, Termux) and PowerShell. Over Tailscale, so no ports open on your router.
+- **Titles that follow the session.** Each session is named after Claude's own title for it, the
+  same on your terminal tab, in `boxls` and in the Claude app. Names you set with `/rename` stick.
+- **See which tab is working.** Each tab shows ◐ while Claude works and ✳ when it's done or
+  waiting on you.
+- **Keeps working when you leave.** Close the laptop or lose Wi-Fi; the session keeps running on
+  the box.
+- **Start new sessions from your phone.** An always-on Remote Control server lets the Claude app
+  start sessions on the box, in your project folder or each in its own git worktree. It restarts
+  itself after network outages.
+- **A box that looks after itself.** It never sleeps (lid closed is fine), reboots by itself
+  after a freeze or kernel panic, comes back after a power cut, and caps the battery charge on
+  laptops that support it. (Linux; the macOS script, untested, sets the Mac equivalents.)
+- **Tailnet-only, if you want.** With `--firewall`, a Linux box accepts connections only from
+  your own devices.
+- **Safe to install.** It backs up your Claude settings and tmux config, adds its hooks next to
+  yours, and changes nothing when you run it again.
+- **Nothing new to trust.** No app, server or relay of its own: tmux, Tailscale and Claude Code's
+  Remote Control do the work, and every script is short enough to read.
 
 ## What's in it
 
