@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# eso-box: keep Claude Code's Remote Control server running in the project folder, so sessions
+# started in the Claude app or at claude.ai/code run on this box. The server gives up after
+# about 10 minutes without network and exits; this starts it again.
+# The eso-rc service runs it inside `tmux -L eso-rc`, because the server expects a terminal.
+# Watch it: tmux -L eso-rc attach -t rc   (detach: Ctrl+b d)
+
+# shellcheck source=/dev/null
+[ -f ~/.config/eso-box/config ] && . ~/.config/eso-box/config
+cd "${ESO_BOX_DIR:?ESO_BOX_DIR is not set in ~/.config/eso-box/config}" || exit 1
+while true; do
+  claude remote-control --spawn="${ESO_RC_SPAWN:-same-dir}"
+  echo "$(date '+%F %T') remote-control exited ($?); restarting in 30 s"
+  sleep 30
+done

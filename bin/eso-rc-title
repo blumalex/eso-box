@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# eso-box: Claude Code hook (UserPromptSubmit, SessionStart). Names each session after Claude's
+# own title for it, the one your terminal tab shows, so the Claude app's session list shows that
+# title instead of a "<hostname>-eager-salamander" name. Claude Code sends a session's name to
+# Remote Control, but not its tab title. Prints nothing until Claude has made a title, and
+# leaves a name you set with /rename alone.
+# Best effort: it reads Claude Code's transcript format, which can change between versions.
+in=$(cat)
+transcript=$(jq -r '.transcript_path // empty' <<<"$in")
+[ -f "$transcript" ] || exit 0
+titles=$(grep -F '"type":"ai-title"' "$transcript" | jq -r '.aiTitle // empty')
+title=$(tail -n 1 <<<"$titles")
+[ -n "$title" ] || exit 0
+named=$(grep -F '"type":"custom-title"' "$transcript" | tail -n 1 | jq -r '.customTitle // empty')
+# A name that was never one of Claude's titles came from /rename: keep it.
+[ -z "$named" ] || grep -qxF -- "$named" <<<"$titles" || exit 0
+jq -nc --arg e "$(jq -r .hook_event_name <<<"$in")" --arg t "$title" \
+  '{hookSpecificOutput: {hookEventName: $e, sessionTitle: $t}}'

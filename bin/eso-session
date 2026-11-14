@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# eso-box: open a Claude Code session on this box inside tmux. Clients call it over SSH through
+# `box` and `boxls` (client/box.sh, client/box.ps1).
+#   eso-session          a new session (tmux numbers them 0, 1, 2...)
+#   eso-session <name>   back into that session, or a new one by that name
+#   eso-session --ls     list the sessions with Claude's title for each
+set -euo pipefail
+
+# `ssh box <command>` skips the login profile, so Homebrew, nvm or ~/.local/bin can be missing
+# from PATH. Run once more under the login shell.
+if [ -z "${ESO_LOGIN:-}" ]; then
+  export ESO_LOGIN=1
+  # shellcheck disable=SC2016  # $0 and $@ belong to the login shell
+  exec "${SHELL:-/bin/bash}" -lc 'exec "$0" "$@"' "$0" "$@"
+fi
+
+# shellcheck source=/dev/null
+[ -f ~/.config/eso-box/config ] && . ~/.config/eso-box/config
+dir=${ESO_BOX_DIR:-$HOME}
+# Claude runs in an interactive login shell, so its tools find everything your terminal does.
+claude_cmd="exec ${SHELL:-/bin/bash} -lic 'exec claude'"
+
+case ${1:-} in
+  --ls) exec tmux ls -F '#S: #T (#{?session_attached,attached,detached})' ;;
+  "") exec tmux new-session -c "$dir" "$claude_cmd" ;;
+  *) exec tmux new-session -A -s "$1" -c "$dir" "$claude_cmd" ;;
+esac

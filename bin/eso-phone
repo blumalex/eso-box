@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""eso-box: list the Claude Code sessions started from the Claude app or claude.ai/code on this
+box, newest first, each with the line that continues it in a terminal: open a session with
+`box`, then paste the /resume line.
+
+Claude Code's /resume picker hides these sessions, but resuming one by its ID works. Once you
+resume one in a terminal, stop typing in its original phone entry: both would write into the
+same conversation file.
+
+Usage: eso-phone [how-many]   (default 8). Inside a session: ! eso-phone
+Best effort: it reads Claude Code's transcript format, which can change between versions.
+"""
+import glob
+import json
+import os
+import re
+import shlex
+import sys
+import time
+import uuid
+
+
+def project_dir():
+    """Claude Code keeps a project's transcripts in ~/.claude/projects/<its path, every
+    character other than a letter or digit turned into '-'>."""
+    folder = os.environ.get("ESO_BOX_DIR")
+    config = os.path.expanduser("~/.config/eso-box/config")
+    if not folder and os.path.exists(config):
+        with open(config) as fh:
+            for line in fh:
+                if line.startswith("ESO_BOX_DIR="):
+                    folder = shlex.split(line.split("=", 1)[1])[0]
+    folder = os.path.realpath(os.path.expanduser(folder or "~"))
+    return os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", folder))
+
+
+n = int(sys.argv[1]) if len(sys.argv) > 1 else 8
+rows = []
+for path in glob.glob(os.path.join(project_dir(), "*.jsonl")):
+    entrypoint = first = None
+    try:
+        with open(path) as fh:
+            for line in fh:
+                try:
+                    o = json.loads(line)
+                except ValueError:
+                    continue
+                entrypoint = entrypoint or o.get("entrypoint")
+                if first is None and o.get("type") == "user":
+                    c = o.get("message", {}).get("content")
+                    if isinstance(c, list):
+                        c = " ".join(b.get("text", "") for b in c
+                                     if isinstance(b, dict) and b.get("type") == "text")
+                    if c:
+                        first = " ".join(c.split())
+                if entrypoint and first:
+                    break
+    except OSError:
+        continue
+    sid = os.path.basename(path)[:-len(".jsonl")]
+    try:
+        # Phone sessions' local IDs derive from the claude.ai session ID (UUID version 5);
+        # terminal sessions' are random (version 4). Some phone transcripts carry no entrypoint.
+        derived = uuid.UUID(sid).version == 5
+    except ValueError:
+        derived = False
+    if entrypoint == "sdk-cli" or derived:
+        rows.append((os.path.getmtime(path), sid, first or "(no message yet)"))
+
+if not rows:
+    print("no phone-started sessions on this box")
+for mtime, sid, first in sorted(rows, reverse=True)[:n]:
+    print(f"{time.strftime('%b %d %H:%M', time.localtime(mtime))}  {first[:72]}")
+    print(f"    /resume {sid}")
