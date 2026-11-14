@@ -21,7 +21,7 @@ features. It is not affiliated with Anthropic.
 
 ## Features
 
-- **One session, every device.** Start Claude on your laptop, answer it from your phone in the
+- **Carry your Claude Code sessions across all your devices.** Start Claude on your laptop, answer it from your phone in the
   Claude app, finish back at your desk. It's the same live conversation, not a copy.
 - **Pick up phone sessions at your desk.** Sessions you start in the Claude app run on the box
   too; `eso-phone` gives you the `/resume` line that continues one in a terminal.
