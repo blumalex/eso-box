@@ -26,13 +26,21 @@ else
   [ -z "$named" ] && [ -n "$TMUX_PANE" ] && [ "$event" = UserPromptSubmit ] || exit 0
   # A phone conversation's local ID is UUIDv5(its claude.ai session URL, Claude Code's namespace).
   # Match it against claude.ai's 100 most recent sessions (internal API, as Claude Code calls it).
-  # Linux only: on macOS Claude Code keeps its login in the Keychain, so this prints nothing.
+  # It signs in with Claude Code's own login: a file on Linux, the login Keychain on macOS.
   title=$(python3 - "$(basename "$transcript" .jsonl)" 2>/dev/null <<'EOF'
-import json, os, sys, uuid, urllib.request
+import json, os, subprocess, sys, uuid, urllib.request
 sid = sys.argv[1]
 if uuid.UUID(sid).version != 5:
     sys.exit()
-tok = json.load(open(os.path.expanduser("~/.claude/.credentials.json")))["claudeAiOauth"]["accessToken"]
+path = os.path.expanduser("~/.claude/.credentials.json")
+if os.path.exists(path):
+    creds = open(path).read()
+else:
+    creds = subprocess.run(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                           capture_output=True, text=True, timeout=2).stdout.strip()
+    if not creds.startswith("{"):  # Claude Code stores it hex-encoded; security may print it so
+        creds = bytes.fromhex(creds).decode()
+tok = json.loads(creds)["claudeAiOauth"]["accessToken"]
 base = "https://api.anthropic.com/v1/code/sessions"
 req = urllib.request.Request(f"{base}?limit=100",
                              headers={"Authorization": f"Bearer {tok}", "anthropic-version": "2023-06-01"})

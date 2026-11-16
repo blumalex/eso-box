@@ -154,8 +154,8 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
 - `eso-phone` and `eso-rc-title` read Claude Code's transcript files, an internal format that
   can change between versions. If they stop working after an update, the rest still works.
 - The phone's title for a phone-started session comes from an internal claude.ai API, as Claude
-  Code itself calls it, and only on a Linux box (a Mac keeps Claude Code's login in the Keychain).
-  Without it, that session's terminal tab just says "Claude Code".
+  Code itself calls it (untested on a Mac box). Without it, that session's terminal tab just says
+  "Claude Code".
 - tmux sessions don't survive a reboot. The conversations do: `box`, then `claude --continue`
   or `/resume`.
 - The Remote Control server serves one project folder. Sessions you start with `box` can `cd`

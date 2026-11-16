@@ -75,7 +75,8 @@ Untested; these are the things to check first.
 - **Keychain over SSH.** On macOS, Claude Code and `gh` keep their logins in the Keychain, which
   SSH sessions often can't read: Claude then asks you to sign in again, and pushes fail. A likely
   fix: start the tmux server from a launchd agent in the logged-in session (as eso-rc does), so
-  sessions it runs inherit the Keychain access.
+  sessions it runs inherit the Keychain access. eso-rc-title reads the same Keychain item
+  (`Claude Code-credentials`) for the phone's session titles, so it works wherever Claude does.
 - **FileVault and automatic login don't mix.** With FileVault on, macOS disables automatic login
   and waits at the unlock screen after a power cut, so nothing starts until someone types the
   password.
