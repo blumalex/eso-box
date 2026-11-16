@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""eso-box: Claude Code hook (SessionStart). Lists the sessions you started on the phone in
+/resume's picker, named "☏ · <the phone's title>", so you can continue one at your desk without
+eso-phone.
+
+The picker hides a conversation whose first "entrypoint" mark is "sdk-cli", which is how the
+phone's process (spawned by the Remote Control server) marks its lines. This overwrites that one
+mark in place with "cli" padded to the same length: still valid JSON, and the file is never
+rewritten, so the phone's process, which may still be appending, is unaffected. Each overwrite is
+logged to ~/.local/state/eso-phone-sync.log (path, byte offset) so it can be undone.
+It then appends a name line (what /rename writes) with the phone's title from claude.ai, unless
+you gave the session a name of your own.
+Best effort: it relies on Claude Code's transcript format and an internal claude.ai API, both of
+which can change between versions.
+"""
+import glob
+import json
+import os
+import subprocess
+import sys
+import time
+import uuid
+import urllib.request
+
+MARK = "☏ · "
+NS = uuid.UUID("3ab19d7e-9f35-45c2-926e-75e271cc60b3")  # Claude Code's namespace for phone IDs
+BASE = "https://api.anthropic.com/v1/code/sessions"
+OLD, NEW = b'"entrypoint":"sdk-cli"', b'"entrypoint":"cli"    '
+LOG = os.path.expanduser("~/.local/state/eso-phone-sync.log")
+
+if not os.environ.get("TMUX_PANE"):  # box tabs only, not the phone's own processes
+    sys.exit()
+
+
+def access_token():
+    """Claude Code's own login: a file on Linux, the login Keychain on macOS."""
+    path = os.path.expanduser("~/.claude/.credentials.json")
+    if os.path.exists(path):
+        creds = open(path).read()
+    else:
+        creds = subprocess.run(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                               capture_output=True, text=True, timeout=2).stdout.strip()
+        if not creds.startswith("{"):  # Claude Code stores it hex-encoded; security may print it so
+            creds = bytes.fromhex(creds).decode()
+    return json.loads(creds)["claudeAiOauth"]["accessToken"]
+
+
+def phone_titles():
+    """Local ID -> title for claude.ai's 100 most recent sessions (internal API, as Claude Code
+    calls it). A phone conversation's local ID is UUIDv5(its claude.ai session URL)."""
+    req = urllib.request.Request(f"{BASE}?limit=100",
+                                 headers={"Authorization": f"Bearer {access_token()}",
+                                          "anthropic-version": "2023-06-01"})
+    rows = json.load(urllib.request.urlopen(req, timeout=3))["data"]
+    return {str(uuid.uuid5(NS, f"{BASE}/{s['id']}")): s.get("title") for s in rows}
+
+
+titles = None
+for path in glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")):
+    sid = os.path.basename(path)[:-len(".jsonl")]
+    try:
+        if uuid.UUID(sid).version != 5:  # terminal sessions' IDs are random (version 4)
+            continue
+    except ValueError:
+        continue
+    with open(path, "r+b") as fh:
+        head = fh.read(65536)
+        off = head.find(b'"entrypoint":"')
+        if off >= 0 and head.startswith(OLD, off):
+            fh.seek(off)
+            fh.write(NEW)
+            os.makedirs(os.path.dirname(LOG), exist_ok=True)
+            with open(LOG, "a") as log:
+                log.write(f"{time.strftime('%F %T')} {path} {off}\n")
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        names = [json.loads(line).get("customTitle") for line in fh if '"type":"custom-title"' in line]
+    name = names[-1] if names else None
+    if name and name.startswith(MARK):
+        continue
+    if titles is None:
+        try:
+            titles = phone_titles()
+        except Exception:
+            titles = {}
+    title = titles.get(sid)
+    # Name it, or re-mark a name that is the bare phone title; leave a /rename name alone.
+    if title and (name is None or name.lstrip("☏· ") == title):
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"type": "custom-title", "customTitle": MARK + title, "sessionId": sid},
+                                ensure_ascii=False, separators=(",", ":")) + "\n")

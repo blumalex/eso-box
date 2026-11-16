@@ -21,13 +21,18 @@ if [ -n "$title" ]; then
 else
   # No title from Claude: a conversation started on the phone and resumed in a terminal. claude.ai
   # titled it and that title never reaches the box, so the tab says "Claude Code". Name the session
-  # after the phone's title. Only in a tmux tab, once (any name stops it), and on a prompt: a
-  # SessionStart name is not applied on resume.
-  [ -z "$named" ] && [ -n "$TMUX_PANE" ] && [ "$event" = UserPromptSubmit ] || exit 0
+  # after the phone's title, marked "☏ · " as eso-phone-sync does. Only in a tmux tab, and on a
+  # prompt: a SessionStart name is not applied on resume.
+  [ -n "$TMUX_PANE" ] && [ "$event" = UserPromptSubmit ] || exit 0
+  case "$named" in
+    "☏ "*) title=$named ;;  # named by eso-phone-sync in the file: put it on this open tab too
+    "") title= ;;
+    *) exit 0 ;;  # a /rename name: keep it
+  esac
   # A phone conversation's local ID is UUIDv5(its claude.ai session URL, Claude Code's namespace).
   # Match it against claude.ai's 100 most recent sessions (internal API, as Claude Code calls it).
   # It signs in with Claude Code's own login: a file on Linux, the login Keychain on macOS.
-  title=$(python3 - "$(basename "$transcript" .jsonl)" 2>/dev/null <<'EOF'
+  [ -n "$title" ] || title=$(python3 - "$(basename "$transcript" .jsonl)" 2>/dev/null <<'EOF'
 import json, os, subprocess, sys, uuid, urllib.request
 sid = sys.argv[1]
 if uuid.UUID(sid).version != 5:
@@ -52,6 +57,7 @@ for s in json.load(urllib.request.urlopen(req, timeout=3))["data"]:
 EOF
 )
   [ -n "$title" ] || exit 0
+  case "$title" in "☏ "*) ;; *) title="☏ · $title" ;; esac  # marks a phone session (not twice)
 fi
 jq -nc --arg e "$event" --arg t "$title" \
   '{hookSpecificOutput: {hookEventName: $e, sessionTitle: $t}}'

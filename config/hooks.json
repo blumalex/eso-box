@@ -52,6 +52,15 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.local/bin/eso-phone-sync\"",
+            "timeout": 5
+          }
+        ]
       }
     ]
   }

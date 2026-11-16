@@ -24,7 +24,8 @@ features. It is not affiliated with Anthropic.
 - **Carry your Claude Code sessions across all your devices.** Start Claude on your laptop, answer it from your phone in the
   Claude app, finish back at your desk. It's the same live conversation, not a copy.
 - **Pick up phone sessions at your desk.** Sessions you start in the Claude app run on the box
-  too; `eso-phone` gives you the `/resume` line that continues one in a terminal.
+  too, and `/resume` lists them as `☏ · <the phone's title>` so you can continue one in a
+  terminal. (Claude Code normally hides them there; `eso-phone` lists them too.)
 - **SSH from any laptop.** `box` opens a session and `boxls` lists them, in bash or zsh (Linux,
   macOS, WSL, Termux) and PowerShell. Over Tailscale, so no ports open on your router.
 - **Titles that follow the session.** Each session is named after Claude's own title for it, the
@@ -58,6 +59,7 @@ features. It is not affiliated with Anthropic.
 | `bin/eso-rc-loop` | Keeps the Remote Control server running (it exits after ~10 min without network) |
 | `bin/eso-rc-title` | Hook: the phone's session list shows Claude's own title for each session |
 | `bin/eso-phone` | Lists sessions started from the phone, with the `/resume` line that continues one in a terminal |
+| `bin/eso-phone-sync` | Hook: `/resume` lists sessions started from the phone, named `☏ · <the phone's title>` |
 | `config/tmux.conf` | Terminal tab shows `◐ <Claude's title> · <session>` while working, `✳` when done |
 | `client/box.sh`, `client/box.ps1` | `box` and `boxls` for bash/zsh (Linux, macOS, WSL, Termux) and PowerShell |
 
@@ -137,7 +139,7 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
   Claude (Ctrl+C twice) ends the session.
 - Phone: every session on the box appears in the Claude app. Type in either place.
 - Sessions started **from the phone** run on the box too. To continue one in a terminal, once:
-  let Claude finish its turn, run `box`, type `! eso-phone`, paste the `/resume <id>` line.
+  let Claude finish its turn, run `box`, type `/resume` and pick its `☏ · <title>` entry.
   From then on use the terminal session's own entry on the phone. See [docs/using.md](docs/using.md).
 
 ## Docs
@@ -151,8 +153,11 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
 
 ## Limitations
 
-- `eso-phone` and `eso-rc-title` read Claude Code's transcript files, an internal format that
-  can change between versions. If they stop working after an update, the rest still works.
+- `eso-phone`, `eso-rc-title` and `eso-phone-sync` read Claude Code's transcript files, an
+  internal format that can change between versions. If they stop working after an update, the
+  rest still works. `eso-phone-sync` also edits them: in each phone session's file it changes the
+  one mark that hides it from `/resume` (in place, same length, logged to
+  `~/.local/state/eso-phone-sync.log`) and appends a name.
 - The phone's title for a phone-started session comes from an internal claude.ai API, as Claude
   Code itself calls it (untested on a Mac box). Without it, that session's terminal tab just says
   "Claude Code".

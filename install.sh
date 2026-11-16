@@ -73,6 +73,15 @@ else
   ' "$settings.pre-eso-box" > "$settings"
   echo "   backup: $settings.pre-eso-box"
 fi
+# eso-phone-sync came later: an install from before it gets just that hook.
+if ! grep -qF 'eso-phone-sync' "$settings"; then
+  cp "$settings" "$settings.pre-eso-phone-sync"
+  jq --slurpfile add "$here/config/hooks.json" '
+    .hooks.SessionStart = ((.hooks.SessionStart // [])
+      + [$add[0].hooks.SessionStart[] | select(tostring | contains("eso-phone-sync"))])
+  ' "$settings.pre-eso-phone-sync" > "$settings"
+  echo "   added the eso-phone-sync hook (backup: $settings.pre-eso-phone-sync)"
+fi
 
 if [ "$os" = Linux ] && { [ -S "/run/user/$(id -u)/wayland-0" ] || [ -S /tmp/.X11-unix/X0 ]; }; then
   install -m 644 "$here/config/linux-desktop-env.sh" ~/.config/eso-box/desktop-env.sh

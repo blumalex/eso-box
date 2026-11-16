@@ -14,11 +14,14 @@ Laptop and phone can both drive the session at any point, back and forth, with n
 
 A session you start in the Claude app or at claude.ai/code runs on the box (through the Remote
 Control server that `install.sh` sets up), in the folder you passed as `--dir`. It isn't in tmux,
-so `box 3` can't reach it, and Claude Code's `/resume` picker hides it. To bring it to a terminal:
+so `box 3` can't reach it. To bring it to a terminal:
 
 1. Let Claude finish its turn on the phone.
-2. Laptop: `box`, then `! eso-phone`. It lists phone-started sessions, newest first, each with
-   its first message and a `/resume <id>` line. Paste that line.
+2. Laptop: `box`, then `/resume`. Phone-started sessions are listed as `☏ · <the phone's
+   title>` (eso-phone-sync; Claude Code would otherwise hide them). Pick yours. A session you
+   start on the phone shows up at the next session start (`box`, or `/clear` in an open one).
+   Or type `! eso-phone`: it lists them newest first, each with its first message and a
+   `/resume <id>` line to paste.
 3. From now on, type only in the terminal session. On the phone, follow the **terminal
    session's own entry** (a new one, named after the first message you send after the move), not
    the original phone entry.
@@ -28,8 +31,7 @@ while the phone's process keeps running, and that process only knows claude.ai's
 conversation. Typing in both would interleave two diverging conversations. The phone's view of
 the moved session starts at the move; the earlier part stays readable in the original entry.
 
-The terminal tab takes the phone's title for the session on the first message you type there
-(eso-rc-title looks it up on claude.ai), and keeps it on later resumes.
+The terminal tab shows the same `☏ · <title>`, and keeps it on later resumes.
 
 After the move, the session switches freely between laptop and phone as above.
 

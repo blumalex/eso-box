@@ -12,8 +12,11 @@ What we ran into running a box, and how eso-box handles each one.
   Run `claude` once in the folder first; `install.sh` warns when it looks untrusted.
 - **`remoteControlAtStartup` applies to sessions started after it is set.** A session already
   running needs `/remote-control` (`/rc`).
-- **Phone-started sessions are hidden from `/resume`'s picker** (their transcripts say entrypoint
-  `sdk-cli`, or nothing, and their IDs are UUID version 5). Resuming by ID works: `eso-phone`.
+- **Claude Code hides phone-started sessions from `/resume`'s picker.** It reads the first
+  `"entrypoint"` mark in a transcript and hides `sdk-cli`, the phone process's mark. The ID kind
+  doesn't matter (phone sessions' IDs are UUID version 5, derived from the claude.ai session URL),
+  and lines the terminal adds later don't help. eso-phone-sync overwrites that first mark in place
+  at each session start, so they're listed. Resuming by ID works either way: `eso-phone`.
 - **Under tmux, Claude Code doesn't animate its terminal title**, so tmux draws the ◐/✳ glyph
   from a hook flag plus pane activity. Esc skips the `Stop` hook, so the 3-second activity check
   is what turns an interrupted tab back to ✳. A permission prompt waiting for you also shows ✳.
