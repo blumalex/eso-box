@@ -4,15 +4,46 @@
 # title instead of a "<hostname>-eager-salamander" name. Claude Code sends a session's name to
 # Remote Control, but not its tab title. Prints nothing until Claude has made a title, and
 # leaves a name you set with /rename alone.
-# Best effort: it reads Claude Code's transcript format, which can change between versions.
+# A session started on the phone and resumed in a terminal gets the phone's title instead (see
+# below), so the tab and the Claude app match.
+# Best effort: it reads Claude Code's transcript format and an internal claude.ai API, both of
+# which can change between versions.
 in=$(cat)
 transcript=$(jq -r '.transcript_path // empty' <<<"$in")
 [ -f "$transcript" ] || exit 0
+event=$(jq -r .hook_event_name <<<"$in")
 titles=$(grep -F '"type":"ai-title"' "$transcript" | jq -r '.aiTitle // empty')
 title=$(tail -n 1 <<<"$titles")
-[ -n "$title" ] || exit 0
 named=$(grep -F '"type":"custom-title"' "$transcript" | tail -n 1 | jq -r '.customTitle // empty')
-# A name that was never one of Claude's titles came from /rename: keep it.
-[ -z "$named" ] || grep -qxF -- "$named" <<<"$titles" || exit 0
-jq -nc --arg e "$(jq -r .hook_event_name <<<"$in")" --arg t "$title" \
+if [ -n "$title" ]; then
+  # A name that was never one of Claude's titles came from /rename: keep it.
+  [ -z "$named" ] || grep -qxF -- "$named" <<<"$titles" || exit 0
+else
+  # No title from Claude: a conversation started on the phone and resumed in a terminal. claude.ai
+  # titled it and that title never reaches the box, so the tab says "Claude Code". Name the session
+  # after the phone's title. Only in a tmux tab, once (any name stops it), and on a prompt: a
+  # SessionStart name is not applied on resume.
+  [ -z "$named" ] && [ -n "$TMUX_PANE" ] && [ "$event" = UserPromptSubmit ] || exit 0
+  # A phone conversation's local ID is UUIDv5(its claude.ai session URL, Claude Code's namespace).
+  # Match it against claude.ai's 100 most recent sessions (internal API, as Claude Code calls it).
+  # Linux only: on macOS Claude Code keeps its login in the Keychain, so this prints nothing.
+  title=$(python3 - "$(basename "$transcript" .jsonl)" 2>/dev/null <<'EOF'
+import json, os, sys, uuid, urllib.request
+sid = sys.argv[1]
+if uuid.UUID(sid).version != 5:
+    sys.exit()
+tok = json.load(open(os.path.expanduser("~/.claude/.credentials.json")))["claudeAiOauth"]["accessToken"]
+base = "https://api.anthropic.com/v1/code/sessions"
+req = urllib.request.Request(f"{base}?limit=100",
+                             headers={"Authorization": f"Bearer {tok}", "anthropic-version": "2023-06-01"})
+ns = uuid.UUID("3ab19d7e-9f35-45c2-926e-75e271cc60b3")
+for s in json.load(urllib.request.urlopen(req, timeout=3))["data"]:
+    if str(uuid.uuid5(ns, f"{base}/{s['id']}")) == sid:
+        print(s.get("title") or "")
+        break
+EOF
+)
+  [ -n "$title" ] || exit 0
+fi
+jq -nc --arg e "$event" --arg t "$title" \
   '{hookSpecificOutput: {hookEventName: $e, sessionTitle: $t}}'

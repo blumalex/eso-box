@@ -28,6 +28,9 @@ while the phone's process keeps running, and that process only knows claude.ai's
 conversation. Typing in both would interleave two diverging conversations. The phone's view of
 the moved session starts at the move; the earlier part stays readable in the original entry.
 
+The terminal tab takes the phone's title for the session on the first message you type there
+(eso-rc-title looks it up on claude.ai), and keeps it on later resumes.
+
 After the move, the session switches freely between laptop and phone as above.
 
 ## Session names on the phone

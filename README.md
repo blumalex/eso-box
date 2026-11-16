@@ -28,7 +28,8 @@ features. It is not affiliated with Anthropic.
 - **SSH from any laptop.** `box` opens a session and `boxls` lists them, in bash or zsh (Linux,
   macOS, WSL, Termux) and PowerShell. Over Tailscale, so no ports open on your router.
 - **Titles that follow the session.** Each session is named after Claude's own title for it, the
-  same on your terminal tab, in `boxls` and in the Claude app. Names you set with `/rename` stick.
+  same on your terminal tab, in `boxls` and in the Claude app. A session you started on the phone
+  keeps the phone's title when you continue it in a terminal. Names you set with `/rename` stick.
 - **See which tab is working.** Each tab shows ◐ while Claude works and ✳ when it's done or
   waiting on you.
 - **Keeps working when you leave.** Close the laptop or lose Wi-Fi; the session keeps running on
@@ -152,6 +153,9 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
 
 - `eso-phone` and `eso-rc-title` read Claude Code's transcript files, an internal format that
   can change between versions. If they stop working after an update, the rest still works.
+- The phone's title for a phone-started session comes from an internal claude.ai API, as Claude
+  Code itself calls it, and only on a Linux box (a Mac keeps Claude Code's login in the Keychain).
+  Without it, that session's terminal tab just says "Claude Code".
 - tmux sessions don't survive a reboot. The conversations do: `box`, then `claude --continue`
   or `/resume`.
 - The Remote Control server serves one project folder. Sessions you start with `box` can `cd`
