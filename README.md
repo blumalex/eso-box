@@ -44,7 +44,7 @@ tmux session, and the phone attaches through Remote Control. Both see and drive 
 
 ## How is this different from `claude --cloud`?
 
-**Cloud sessions can change your app. eso-box can run it.**
+**Cloud sessions hand you a diff. eso-box hands you the running app.**
 
 A [cloud session](https://code.claude.com/docs/en/claude-code-on-the-web) (`claude --cloud`, or
 claude.ai/code) runs on a fresh Anthropic VM with a clean clone of your GitHub repo. eso-box runs
