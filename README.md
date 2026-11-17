@@ -42,6 +42,36 @@ The session never moves. It runs on the box inside tmux with Claude Code's
 [Remote Control](https://code.claude.com/docs/en/remote-control) on. The laptop attaches to the
 tmux session, and the phone attaches through Remote Control. Both see and drive the same Claude.
 
+## How is this different from `claude --cloud`?
+
+**Cloud sessions can change your app. eso-box can run it.**
+
+A [cloud session](https://code.claude.com/docs/en/claude-code-on-the-web) (`claude --cloud`, or
+claude.ai/code) runs on a fresh Anthropic VM with a clean clone of your GitHub repo. eso-box runs
+your sessions on your own machine, in your real setup.
+
+| | Cloud session | eso-box |
+|---|---|---|
+| Your setup | A fresh clone, rebuilt by a setup script: no untracked files, local `.env` files, databases or signed-in tools | Already there |
+| Moving to a terminal | `--teleport` makes a copy that doesn't sync back | The same live session, both ways |
+| Dev servers and long jobs | An idle session's VM pauses after a few minutes and can be reclaimed, along with anything running | Keep running |
+| Your app on your phone | No way to reach the VM | Open the box's dev server |
+| Networks | Public sites you allow; not your LAN, VPN or tailnet | Anything the box can reach |
+| Hardware | About 4 vCPUs, 16 GB of RAM, no GPU | Yours |
+| Your code | Copied to Anthropic's VM; GitHub access through the Claude GitHub App or your `gh` token | Stays on your disk; only what Claude reads or runs goes to Anthropic |
+| Isolation | A separate VM per task, with credentials kept outside it | None: Claude works with your own logins and access |
+| Upkeep | None | A machine you keep on and secure |
+
+Use cloud sessions for self-contained tasks and for running many at once, and the box for the
+project you work in every day. They combine: run `claude --cloud` from the box to hand off a side
+task.
+
+Anthropic's docs point here too: *"To run Claude Code on your own always-on machine and drive it
+from other devices, use Remote Control"*
+([self-hosted environments](https://code.claude.com/docs/en/self-hosted-environments)), and for
+work beyond the cloud VM's limits, *"use Remote Control to run Claude Code on your own hardware"*
+([cloud environments](https://code.claude.com/docs/en/cloud-environments#resource-limits)).
+
 ## What's in it
 
 | Path | What it does |
