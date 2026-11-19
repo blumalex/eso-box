@@ -22,7 +22,8 @@ features. It is not affiliated with Anthropic.
   (Linux; macOS untested.)
 - **Tabs that tell you what's happening.** Each session keeps Claude's title for it on every
   device, a phone-started one keeps the phone's title in a terminal, and names you set with
-  `/rename` stick. Its tab shows ◐ while Claude works and ✳ when it's done or waiting on you.
+  `/rename` stick. Its tab shows ◐ while Claude works, ✳ when it's done or waiting on you, and
+  💤 once it has been done for 5 minutes, so you can tell what just finished.
 - **Try your app on your phone.** Open it against the box's dev server.
 - **Private by default.** Every device reaches the box over Tailscale, with no ports open on
   your router. With `--firewall`, a Linux box accepts connections only from your devices.
@@ -84,7 +85,7 @@ work beyond the cloud VM's limits, *"use Remote Control to run Claude Code on yo
 | `bin/eso-rc-title` | Hook: the phone's session list shows Claude's own title for each session |
 | `bin/eso-phone` | Lists sessions started from the phone, with the `/resume` line that continues one in a terminal |
 | `bin/eso-phone-sync` | Hook: `/resume` lists sessions started from the phone, named `☏ · <the phone's title>` |
-| `config/tmux.conf` | Terminal tab shows `◐ <Claude's title> · <session>` while working, `✳` when done |
+| `config/tmux.conf` | Terminal tab shows `◐ <Claude's title> · <session>` while working, `✳` when done, `💤` 5 min later |
 | `client/box.sh`, `client/box.ps1` | `box` and `boxls` for bash/zsh (Linux, macOS, WSL, Termux) and PowerShell |
 
 ## Status
