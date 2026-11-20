@@ -21,7 +21,12 @@ dir=${ESO_BOX_DIR:-$HOME}
 claude_cmd="exec ${SHELL:-/bin/bash} -lic 'exec claude'"
 
 case ${1:-} in
-  --ls) exec tmux ls -F '#S: #T (#{?session_attached,attached,detached})' ;;
+  --ls)
+    rc=0
+    tmux ls -F '#S: #T (#{?session_attached,attached,detached})' || rc=$?
+    "$(dirname "$0")/eso-update-check" || true
+    exit "$rc"
+    ;;
   "") exec tmux new-session -c "$dir" "$claude_cmd" ;;
   *) exec tmux new-session -A -s "$1" -c "$dir" "$claude_cmd" ;;
 esac

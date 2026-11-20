@@ -86,6 +86,7 @@ work beyond the cloud VM's limits, *"use Remote Control to run Claude Code on yo
 | `bin/eso-phone` | Lists sessions started from the phone, with the `/resume` line that continues one in a terminal |
 | `bin/eso-phone-sync` | Hook: `/resume` lists sessions started from the phone, named `☏ · <the phone's title>` |
 | `bin/eso-tab-stop` | Hook: the tab turns `✳` when Claude's turn ends, unless background agents are still running |
+| `bin/eso-update-check` | Hook and `boxls`: says when a newer eso-box is out; never installs anything |
 | `config/tmux.conf` | Terminal tab shows `◐ <Claude's title> · <session>` while working, `✳` when done, `💤` 5 min later |
 | `client/box.sh`, `client/box.ps1` | `box` and `boxls` for bash/zsh (Linux, macOS, WSL, Termux) and PowerShell |
 
@@ -184,6 +185,11 @@ The rerun replaces eso-box's own tab-title block in `~/.tmux.conf` and its own h
 It keeps your settings in `~/.config/eso-box/config`, including the `--dir` folder. A tab-title
 block you edited by hand is left as it is. `--no-service` skips restarting the Remote Control
 server. Running sessions pick up the new hooks by themselves.
+
+When an update is out, `boxls` ends with a line saying so, and so does the top of each new
+Claude session on the box. eso-box checks GitHub for it once a day and never installs anything
+by itself; see [docs/security.md](docs/security.md) for what the check sends, and how to turn
+it off.
 
 ## Docs
 

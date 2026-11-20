@@ -51,11 +51,17 @@ case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "   add ~/.local/bin to PAT
 echo "== config: ~/.config/eso-box/config"
 mkdir -p ~/.config/eso-box
 {
-  echo "# eso-box settings, read by eso-session, eso-rc-loop and eso-phone"
+  echo "# eso-box settings, read by eso-session, eso-rc-loop, eso-phone and eso-update-check"
   printf 'ESO_BOX_DIR=%q\n' "$dir"
   echo "# Sessions started from the phone: same-dir (all in ESO_BOX_DIR) or worktree (each in its own git worktree)"
   printf 'ESO_RC_SPAWN=%q\n' "${ESO_RC_SPAWN:-same-dir}"
+  echo "# Once a day, ask GitHub whether a newer eso-box is out: on or off (see docs/security.md)"
+  printf 'ESO_BOX_UPDATE_CHECK=%q\n' "${ESO_BOX_UPDATE_CHECK:-on}"
+  echo "# The clone and commit this install came from, for eso-update-check"
+  printf 'ESO_BOX_REPO=%q\n' "$here"
+  printf 'ESO_BOX_VERSION=%q\n' "$(git -C "$here" rev-parse HEAD 2>/dev/null || true)"
 } > ~/.config/eso-box/config
+rm -f ~/.cache/eso-box/update-available
 
 # Each file gets the first backup when eso-box first changes it, and one more before each upgrade.
 # The files are written in place (cat >), so a symlinked dotfile stays a symlink.
@@ -101,7 +107,7 @@ if grep -qF 'eso-rc-title' "$settings"; then first=false; else first=true; fi
 # Takes out every hook command of any eso-box version, then adds the current ones. Yours stay.
 new=$(mktemp)
 jq --slurpfile add "$here/config/hooks.json" --argjson first "$first" '
-  def ours: test("eso-(rc-title|phone-sync|tab-stop)|@claude_busy");
+  def ours: test("eso-(rc-title|phone-sync|tab-stop|update-check)|@claude_busy");
   (if $first then .remoteControlAtStartup = true else . end)
   | .hooks = ((.hooks // {})
       | map_values(map(.hooks = [(.hooks // [])[] | select((.command // "") | ours | not)])

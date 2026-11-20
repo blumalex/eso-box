@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# eso-box: says when a newer eso-box is out. It never downloads or installs anything.
+#   eso-update-check          prints a one-line notice if this install is behind (boxls shows it)
+#   eso-update-check --hook   the same notice as a Claude Code SessionStart hook message, shown at
+#                             the top of each new session
+# The check: at most once a day, in the background, `git ls-remote` asks your eso-box clone's
+# origin (GitHub, for a plain clone) for its latest commit, and compares it with the one you
+# installed. The answer waits in ~/.cache/eso-box, so the notice adds no delay and works offline.
+# Turn it off: ESO_BOX_UPDATE_CHECK=off in ~/.config/eso-box/config.
+set -uo pipefail
+# shellcheck source=/dev/null
+[ -f ~/.config/eso-box/config ] && . ~/.config/eso-box/config
+[ "${ESO_BOX_UPDATE_CHECK:-on}" != off ] || exit 0
+repo=${ESO_BOX_REPO:-} installed=${ESO_BOX_VERSION:-}
+[ -n "$repo" ] && [ -n "$installed" ] && git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || exit 0
+cache=~/.cache/eso-box
+
+if [ "${1:-}" = --refresh ]; then
+  latest=$(GIT_TERMINAL_PROMPT=0 git -C "$repo" ls-remote --quiet origin HEAD 2>/dev/null | cut -f1)
+  [ -n "$latest" ] || exit 0  # offline, or no origin: ask again tomorrow
+  # Up to date, or installed from a commit past origin's (your own changes).
+  if [ "$latest" = "$installed" ] || git -C "$repo" merge-base --is-ancestor "$latest" "$installed" 2>/dev/null; then
+    rm -f "$cache/update-available"
+  else
+    echo "$latest" > "$cache/update-available"
+  fi
+  exit 0
+fi
+
+if [ -z "$(find "$cache/last-check" -mmin -1440 2>/dev/null)" ]; then
+  mkdir -p "$cache" && touch "$cache/last-check"
+  nohup "$0" --refresh </dev/null >/dev/null 2>&1 &
+fi
+[ -f "$cache/update-available" ] || exit 0
+printf -v msg 'eso-box update available: cd %q && git pull && ./install.sh --no-service' "$repo"
+if [ "${1:-}" = --hook ]; then jq -nc --arg m "$msg" '{systemMessage: $m}'; else echo "$msg"; fi

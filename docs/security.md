@@ -17,6 +17,13 @@ These are the choices eso-box's setup makes, and what to do if the box goes miss
   connections only from the tailnet. Tailscale SSH in check mode re-asks for a Tailscale sign-in
   about every 12 hours, which is what stops a stolen laptop from getting a shell on the box.
 - **Remote Control** goes through Anthropic and needs your claude.ai sign-in on each device.
+- **What eso-box itself connects to.** Anthropic's API, with your Claude sign-in, for session
+  names (`eso-rc-title`, `eso-phone-sync`; the same API Claude Code calls). And once a day,
+  your eso-box clone's `origin` (GitHub, for a plain clone), with `git ls-remote`, to see
+  whether a newer eso-box is out (`eso-update-check`). That request carries what any git
+  client's does (the box's IP address, git's version) and nothing else. It never downloads or
+  installs anything: updating is always your own `git pull` and rerun. Turn the check off with
+  `ESO_BOX_UPDATE_CHECK=off` in `~/.config/eso-box/config`; a rerun of `install.sh` keeps it.
 
 ## If the box is stolen
 
