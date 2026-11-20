@@ -21,7 +21,9 @@ What we ran into running a box, and how eso-box handles each one.
   from a hook flag plus pane activity. Esc skips the `Stop` hook, so the 3-second activity check
   is what turns an interrupted tab back to ✳. A permission prompt waiting for you also shows ✳,
   and 💤 after 5 minutes. The 5 minutes count from a timestamp the `Stop` hook writes, not from
-  the pane's last output, which can come minutes after the turn ends.
+  the pane's last output, which can come minutes after the turn ends. A turn that ends with a
+  background subagent or workflow still running keeps ◐ until that work is done; background
+  shells don't count, since some never exit.
 - **`←` on an empty prompt moves the session to Claude Code's background service** (agent view)
   and out of tmux. Turn that off with `leftArrowOpensAgents` in `/config` if it surprises you. See
   [background-sessions.md](background-sessions.md).

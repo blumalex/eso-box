@@ -85,6 +85,7 @@ work beyond the cloud VM's limits, *"use Remote Control to run Claude Code on yo
 | `bin/eso-rc-title` | Hook: the phone's session list shows Claude's own title for each session |
 | `bin/eso-phone` | Lists sessions started from the phone, with the `/resume` line that continues one in a terminal |
 | `bin/eso-phone-sync` | Hook: `/resume` lists sessions started from the phone, named `☏ · <the phone's title>` |
+| `bin/eso-tab-stop` | Hook: the tab turns `✳` when Claude's turn ends, unless background agents are still running |
 | `config/tmux.conf` | Terminal tab shows `◐ <Claude's title> · <session>` while working, `✳` when done, `💤` 5 min later |
 | `client/box.sh`, `client/box.ps1` | `box` and `boxls` for bash/zsh (Linux, macOS, WSL, Termux) and PowerShell |
 

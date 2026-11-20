@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# eso-box: Claude Code hook (Stop). Ends the tab's ◐ when Claude's turn ends: clears the
+# @claude_busy flag and stamps @claude_done with the time (see config/tmux.conf).
+# A turn that ends while a background subagent or workflow still runs is not done: the tab keeps
+# ◐, and @claude_bg holds how many are running (the Stop hook's input lists the running background
+# tasks). Claude is re-invoked when that work finishes, and that turn's Stop clears both.
+# Background shells and monitors don't count, since some never exit (a dev server, a watcher).
+[ -n "$TMUX_PANE" ] || exit 0
+n=$(jq '[.background_tasks[]? | select(.type == "subagent" or .type == "workflow")] | length' 2>/dev/null)
+if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
+  tmux set -p -t "$TMUX_PANE" @claude_busy 1
+  tmux set -p -t "$TMUX_PANE" @claude_bg "$n"
+else
+  tmux set -p -t "$TMUX_PANE" -u @claude_busy
+  tmux set -p -t "$TMUX_PANE" -u @claude_bg
+  tmux set -p -t "$TMUX_PANE" @claude_done "$(date +%s)"
+fi 2>/dev/null
+exit 0

@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"$TMUX_PANE\" ] || { tmux set -p -t \"$TMUX_PANE\" -u @claude_busy; tmux set -p -t \"$TMUX_PANE\" @claude_done \"$(date +%s)\"; } 2>/dev/null || true",
+            "command": "\"$HOME/.local/bin/eso-tab-stop\"",
             "timeout": 5
           }
         ]
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"$TMUX_PANE\" ] || tmux set -p -t \"$TMUX_PANE\" -u @claude_busy 2>/dev/null || true",
+            "command": "[ -z \"$TMUX_PANE\" ] || [ -n \"$(tmux show -p -t \"$TMUX_PANE\" -qv @claude_bg 2>/dev/null)\" ] || tmux set -p -t \"$TMUX_PANE\" -u @claude_busy 2>/dev/null || true",
             "timeout": 5
           }
         ]
