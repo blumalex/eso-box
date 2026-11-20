@@ -113,7 +113,7 @@ work beyond the cloud VM's limits, *"use Remote Control to run Claude Code on yo
 ## Set up the box
 
 `install.sh` backs up your Claude settings and tmux config before changing them, adds its hooks
-next to yours, and is safe to rerun.
+next to yours, and is safe to rerun. Rerunning it is also how you update (see [Update](#update)).
 
 ### Linux (Debian/Ubuntu)
 
@@ -170,6 +170,20 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
 - Sessions started **from the phone** run on the box too. To continue one in a terminal, once:
   let Claude finish its turn, run `box`, type `/resume` and pick its `☏ · <title>` entry.
   From then on use the terminal session's own entry on the phone. See [docs/using.md](docs/using.md).
+
+## Update
+
+On the box:
+
+```bash
+cd ~/eso-box && git pull && ./install.sh --no-service
+```
+
+The rerun replaces eso-box's own tab-title block in `~/.tmux.conf` and its own hooks in
+`~/.claude/settings.json`, leaves yours alone, and backs up both first (`*.pre-eso-box-upgrade`).
+It keeps your settings in `~/.config/eso-box/config`, including the `--dir` folder. A tab-title
+block you edited by hand is left as it is. `--no-service` skips restarting the Remote Control
+server. Running sessions pick up the new hooks by themselves.
 
 ## Docs
 

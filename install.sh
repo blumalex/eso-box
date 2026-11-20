@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # eso-box installer. Run it on the box as your normal user (not root):
 #   ./install.sh --dir ~/code/myproject [--no-service]
-# --dir         the project folder that sessions started from the phone run in
+# --dir         the project folder that sessions started from the phone run in (a rerun
+#               without it keeps the last one)
 # --no-service  skip the always-on Remote Control server
 # Installs the box tools into ~/.local/bin, the tab titles into ~/.tmux.conf, the hooks into
 # ~/.claude/settings.json (with a backup), and the Remote Control server as a systemd user
-# service (Linux) or a launchd agent (macOS). Safe to rerun.
+# service (Linux) or a launchd agent (macOS). Safe to rerun: after a git pull, a rerun upgrades
+# eso-box's own tab titles and hooks in place and keeps your settings. Update:
+#   git pull && ./install.sh --no-service
 # System settings (never sleep, restart after a power cut) are separate, run with sudo:
 #   box/linux/setup-root.sh  or  box/macos/setup-root.sh
 set -euo pipefail
@@ -15,11 +18,15 @@ while [ $# -gt 0 ]; do
   case $1 in
     --dir) dir=${2:?--dir needs a folder}; shift 2 ;;
     --no-service) service=0; shift ;;
-    -h | --help) sed -n '2,11p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,13p' "$0"; exit 0 ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
 done
 [ "$(id -u)" != 0 ] || { echo "Run it as your normal user, not root." >&2; exit 1; }
+# A rerun keeps the settings of the last install.
+# shellcheck source=/dev/null
+[ -f ~/.config/eso-box/config ] && . ~/.config/eso-box/config
+[ -n "$dir" ] || dir=${ESO_BOX_DIR:-}
 [ -n "$dir" ] || { echo "Pass --dir <the project folder Claude works in> (see --help)" >&2; exit 2; }
 dir=$(cd "$dir" && pwd -P)
 os=$(uname -s)
@@ -47,41 +54,70 @@ mkdir -p ~/.config/eso-box
   echo "# eso-box settings, read by eso-session, eso-rc-loop and eso-phone"
   printf 'ESO_BOX_DIR=%q\n' "$dir"
   echo "# Sessions started from the phone: same-dir (all in ESO_BOX_DIR) or worktree (each in its own git worktree)"
-  echo "ESO_RC_SPAWN=same-dir"
+  printf 'ESO_RC_SPAWN=%q\n' "${ESO_RC_SPAWN:-same-dir}"
 } > ~/.config/eso-box/config
 
+# Each file gets the first backup when eso-box first changes it, and one more before each upgrade.
+# The files are written in place (cat >), so a symlinked dotfile stays a symlink.
 echo "== tab titles: ~/.tmux.conf"
-if grep -qF '# eso-box: tab titles' ~/.tmux.conf 2>/dev/null; then
-  echo "   already there"
-else
-  [ -f ~/.tmux.conf ] && cp ~/.tmux.conf ~/.tmux.conf.pre-eso-box
-  cat "$here/config/tmux.conf" >> ~/.tmux.conf
-  tmux source-file ~/.tmux.conf 2>/dev/null || true
-fi
+tmux_conf=~/.tmux.conf
+[ -f "$tmux_conf" ] && src=$tmux_conf || src=/dev/null
+# eso-box's block, in every version: its marker line, then only comments and `set -g` lines,
+# ending with set-titles-string. Replaced where it is; a block edited past that is left alone.
+block=$(awk '
+  /^# eso-box: tab titles$/ { m = 1; next }
+  m && /^set -g set-titles-string / { r = "ok"; exit }
+  m && !/^(#|set -g (set-titles|status-interval) )/ { r = "edited"; exit }
+  END { print (m ? (r ? r : "ok") : "none") }
+' "$src")
+case $block in
+  edited) echo "   eso-box's block was edited by hand: left alone (the current one: config/tmux.conf)" ;;
+  *)
+    new=$(mktemp)
+    awk -v f="$here/config/tmux.conf" '
+      !done && /^# eso-box: tab titles$/ { b = 0; while ((getline l < f) > 0) print l; skip = done = 1; next }
+      skip { if (/^set -g set-titles-string /) skip = 0; next }
+      /^$/ { b++; next }
+      { for (; b > 0; b--) print ""; print }
+      END { for (; b > 0; b--) print ""; if (!done) while ((getline l < f) > 0) print l }
+    ' "$src" > "$new"
+    if cmp -s "$new" "$src"; then
+      echo "   already current"
+    else
+      if [ "$block" = ok ]; then bak=$tmux_conf.pre-eso-box-upgrade; else bak=$tmux_conf.pre-eso-box; fi
+      [ -f "$tmux_conf" ] && cp "$tmux_conf" "$bak" && echo "   backup: $bak"
+      cat "$new" > "$tmux_conf"
+      tmux source-file "$tmux_conf" 2>/dev/null || true
+    fi
+    rm -f "$new"
+    ;;
+esac
 
 echo "== hooks and Remote Control for every session: ~/.claude/settings.json"
 settings=~/.claude/settings.json
 mkdir -p ~/.claude
 [ -f "$settings" ] || echo '{}' > "$settings"
-if grep -qF 'eso-rc-title' "$settings"; then
-  echo "   already there"
+if grep -qF 'eso-rc-title' "$settings"; then first=false; else first=true; fi
+# Takes out every hook command of any eso-box version, then adds the current ones. Yours stay.
+new=$(mktemp)
+jq --slurpfile add "$here/config/hooks.json" --argjson first "$first" '
+  def ours: test("eso-(rc-title|phone-sync|tab-stop)|@claude_busy");
+  (if $first then .remoteControlAtStartup = true else . end)
+  | .hooks = ((.hooks // {})
+      | map_values(map(.hooks = [(.hooks // [])[] | select((.command // "") | ours | not)])
+          | map(select(.hooks | length > 0)))
+      | with_entries(select(.value | length > 0)))
+  | reduce ($add[0].hooks | to_entries[]) as $e (.; .hooks[$e.key] = ((.hooks[$e.key] // []) + $e.value))
+' "$settings" > "$new"
+if cmp -s <(jq -S . "$settings") <(jq -S . "$new"); then
+  echo "   already current"
 else
-  cp "$settings" "$settings.pre-eso-box"
-  jq --slurpfile add "$here/config/hooks.json" '
-    .remoteControlAtStartup = true
-    | reduce ($add[0].hooks | to_entries[]) as $e (.; .hooks[$e.key] = ((.hooks[$e.key] // []) + $e.value))
-  ' "$settings.pre-eso-box" > "$settings"
-  echo "   backup: $settings.pre-eso-box"
+  if $first; then bak=$settings.pre-eso-box; else bak=$settings.pre-eso-box-upgrade; fi
+  cp "$settings" "$bak"
+  cat "$new" > "$settings"
+  echo "   backup: $bak"
 fi
-# eso-phone-sync came later: an install from before it gets just that hook.
-if ! grep -qF 'eso-phone-sync' "$settings"; then
-  cp "$settings" "$settings.pre-eso-phone-sync"
-  jq --slurpfile add "$here/config/hooks.json" '
-    .hooks.SessionStart = ((.hooks.SessionStart // [])
-      + [$add[0].hooks.SessionStart[] | select(tostring | contains("eso-phone-sync"))])
-  ' "$settings.pre-eso-phone-sync" > "$settings"
-  echo "   added the eso-phone-sync hook (backup: $settings.pre-eso-phone-sync)"
-fi
+rm -f "$new"
 
 if [ "$os" = Linux ] && { [ -S "/run/user/$(id -u)/wayland-0" ] || [ -S /tmp/.X11-unix/X0 ]; }; then
   install -m 644 "$here/config/linux-desktop-env.sh" ~/.config/eso-box/desktop-env.sh
