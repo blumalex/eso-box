@@ -30,6 +30,12 @@ What we ran into running a box, and how eso-box handles each one.
 - **PATH over SSH:** `ssh box <command>` skips your login profile, so `claude`, Homebrew and nvm
   can be missing. eso-session reruns itself under your login shell, and runs Claude in an
   interactive login shell.
+- **A dropped connection leaves the laptop's terminal tracking the mouse.** Claude Code's
+  fullscreen mode (`/config`) turns on mouse tracking, and tmux passes it to the laptop's
+  terminal. When the laptop sleeps, the connection can drop; on waking, ssh prints
+  `Connection to ... port 22: ...` and exits, and tmux never got to switch the tracking off, so
+  every mouse move typed `35;80;20M`-style coordinates at the prompt. The bash/zsh `box` switches
+  it off when ssh exits with 255 and says what happened.
 
 ## Tailscale
 
