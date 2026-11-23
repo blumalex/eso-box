@@ -32,5 +32,7 @@ if [ -z "$(find "$cache/last-check" -mmin -1440 2>/dev/null)" ]; then
   nohup "$0" --refresh </dev/null >/dev/null 2>&1 &
 fi
 [ -f "$cache/update-available" ] || exit 0
-printf -v msg 'eso-box update available: cd %q && git pull && ./install.sh --no-service' "$repo"
+# The laptops' own clones (box and boxls come from there) aren't visible from here, and the check
+# never downloads the update to see whether client/ changed, so the laptop step is always named.
+printf -v msg 'eso-box update available: on the box, cd %q && git pull && ./install.sh --no-service; on each laptop, git pull in ~/eso-box' "$repo"
 if [ "${1:-}" = --hook ]; then jq -nc --arg m "$msg" '{systemMessage: $m}'; else echo "$msg"; fi

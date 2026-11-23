@@ -186,6 +186,9 @@ It keeps your settings in `~/.config/eso-box/config`, including the `--dir` fold
 block you edited by hand is left as it is. `--no-service` skips restarting the Remote Control
 server. Running sessions pick up the new hooks by themselves.
 
+On each laptop, also run `git pull` in `~/eso-box` and open a new terminal: `box` and `boxls`
+come from the laptop's own clone.
+
 When an update is out, `boxls` ends with a line saying so, and so does the top of each new
 Claude session on the box. eso-box checks GitHub for it once a day and never installs anything
 by itself; see [docs/security.md](docs/security.md) for what the check sends, and how to turn
