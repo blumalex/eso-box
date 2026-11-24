@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # eso-box installer. Run it on the box as your normal user (not root):
-#   ./install.sh --dir ~/code/myproject [--no-service]
+#   ./install.sh --dir ~/code/myproject [--no-service] [--health | --no-health]
 # --dir         the project folder that sessions started from the phone run in (a rerun
 #               without it keeps the last one)
 # --no-service  skip the always-on Remote Control server
+# --health      also run the health page at http://<box>:8090 (Linux; a rerun keeps it on);
+#               --no-health removes it
 # Installs the box tools into ~/.local/bin, the tab titles into ~/.tmux.conf, the hooks into
 # ~/.claude/settings.json (with a backup), and the Remote Control server as a systemd user
 # service (Linux) or a launchd agent (macOS). Safe to rerun: after a git pull, a rerun upgrades
@@ -13,12 +15,14 @@
 #   box/linux/setup-root.sh  or  box/macos/setup-root.sh
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-dir="" service=1
+dir="" service=1 health=""
 while [ $# -gt 0 ]; do
   case $1 in
     --dir) dir=${2:?--dir needs a folder}; shift 2 ;;
     --no-service) service=0; shift ;;
-    -h | --help) sed -n '2,13p' "$0"; exit 0 ;;
+    --health) health=on; shift ;;
+    --no-health) health=off; shift ;;
+    -h | --help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -29,6 +33,7 @@ done
 [ -n "$dir" ] || dir=${ESO_BOX_DIR:-}
 [ -n "$dir" ] || { echo "Pass --dir <the project folder Claude works in> (see --help)" >&2; exit 2; }
 dir=$(cd "$dir" && pwd -P)
+[ -n "$health" ] || health=${ESO_BOX_HEALTH:-off}
 os=$(uname -s)
 
 missing=""
@@ -57,6 +62,8 @@ mkdir -p ~/.config/eso-box
   printf 'ESO_RC_SPAWN=%q\n' "${ESO_RC_SPAWN:-same-dir}"
   echo "# Once a day, ask GitHub whether a newer eso-box is out: on or off (see docs/security.md)"
   printf 'ESO_BOX_UPDATE_CHECK=%q\n' "${ESO_BOX_UPDATE_CHECK:-on}"
+  echo "# The health page at http://<box>:8090 (eso-health): on or off; install.sh --health / --no-health"
+  printf 'ESO_BOX_HEALTH=%q\n' "$health"
   echo "# The clone and commit this install came from, for eso-update-check"
   printf 'ESO_BOX_REPO=%q\n' "$here"
   printf 'ESO_BOX_VERSION=%q\n' "$(git -C "$here" rev-parse HEAD 2>/dev/null || true)"
@@ -192,6 +199,38 @@ EOF
   echo "   watch it: tmux -L eso-rc attach -t rc   (detach: Ctrl+b d)"
 fi
 
+health_unit=~/.config/systemd/user/eso-health.service
+if [ "$health" = on ] && [ "$os" = Linux ]; then
+  echo "== health page: systemd user service eso-health, port 8090"
+  mkdir -p ~/.local/share/eso-box "$(dirname "$health_unit")"
+  install -m 644 "$here/config/health.html" ~/.local/share/eso-box/health.html
+  cat > "$health_unit" <<'EOF'
+[Unit]
+Description=eso-box: health page on port 8090, tailnet only (~/.local/bin/eso-health)
+
+[Service]
+ExecStart=%h/.local/bin/eso-health
+Restart=always
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=default.target
+EOF
+  systemctl --user daemon-reload
+  systemctl --user enable eso-health.service
+  systemctl --user restart eso-health.service
+  [ -f ~/.config/eso-box/health-ping-url ] ||
+    echo "   optional: the last status off the box, and an alert when it goes quiet: README, \"Health page\""
+elif [ "$health" = on ]; then
+  echo "== health page: Linux only, skipped"
+elif [ -f "$health_unit" ]; then
+  echo "== health page: removing (its readings stay in ~/.local/share/eso-box/health.db)"
+  systemctl --user disable --now eso-health.service 2>/dev/null || true
+  rm -f "$health_unit"
+  systemctl --user daemon-reload
+fi
+
 name=$(tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // empty' | cut -d. -f1) || true
 host=${name:-"<this box's Tailscale name>"}
 cat <<EOF
@@ -202,3 +241,6 @@ Done. On each laptop or desktop (see README, "Set up each device"):
 Then: box (new session), box <name> (back into one), boxls (list them).
 Phone: the Claude app shows every session on this box; sessions you start there run in $dir.
 EOF
+if [ "$health" = on ] && [ "$os" = Linux ]; then
+  echo "Health page, from any device on your tailnet: http://$host:8090"
+fi

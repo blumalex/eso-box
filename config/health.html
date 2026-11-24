@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box health</title>
+<style>
+:root {
+  color-scheme: dark;  /* always dark, whatever the device's setting */
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926;
+  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto; max-width: 1200px; padding: 16px 16px 40px;
+  background: var(--page); color: var(--ink);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; }
+h2 { font-size: 13px; font-weight: 600; color: var(--ink2); margin: 0 0 8px; }
+.asof { color: var(--ink2); font-size: 13px; }
+.note { color: var(--ink2); font-size: 12px; font-weight: 400; }
+section { margin-bottom: 20px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 8px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.tile .label { color: var(--ink2); font-size: 12px; }
+.tile .value { font-size: 19px; font-weight: 600; display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.tile .sub { color: var(--ink2); font-size: 12px; overflow-wrap: anywhere; }
+.icon {
+  flex: none; width: 18px; height: 18px; border-radius: 50%; display: inline-grid; place-items: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+}
+.icon.good { background: var(--good); }
+.icon.warning { background: var(--warning); color: #0b0b0b; }
+.icon.critical { background: var(--critical); }
+.filters { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+.filters button {
+  font: inherit; font-size: 13px; color: var(--ink2); background: transparent;
+  border: 1px solid transparent; border-radius: 8px; padding: 6px 12px; cursor: pointer;
+}
+.filters button:hover { background: var(--border); }
+.filters button[aria-pressed="true"] { color: var(--ink); font-weight: 600; background: var(--surface); border-color: var(--border); }
+.bucket { margin: 0 0 10px; }
+.charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 12px; }
+.loading .charts, .loading .tiles { opacity: 0.55; transition: opacity 0.15s; }
+figure { margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 12px 6px; min-width: 0; }
+figcaption { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+figcaption .title { font-weight: 600; font-size: 14px; }
+.legend { display: flex; gap: 12px; color: var(--ink2); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.key { display: inline-block; width: 14px; height: 2px; border-radius: 1px; }
+.tbtn { margin-left: auto; font: inherit; font-size: 12px; color: var(--ink2); background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+.plot { position: relative; }
+.plot svg { display: block; width: 100%; height: 190px; touch-action: pan-y; outline: none; }
+.plot svg:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; border-radius: 4px; }
+.plot text { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.plot text.end { fill: var(--ink2); }
+.empty { fill: var(--ink2); }
+.tip {
+  position: absolute; top: 4px; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); white-space: nowrap;
+}
+.tip .when { color: var(--ink2); margin-bottom: 2px; }
+.tip .row { display: flex; align-items: center; gap: 6px; }
+.tip strong { font-weight: 600; }
+.tip .name { color: var(--ink2); }
+.tablewrap { max-height: 260px; overflow: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 3px 8px; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink2); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="host">Box health</h1>
+  <span class="asof" id="asof"></span>
+</header>
+
+<section aria-labelledby="now-h">
+  <h2 id="now-h">Now <span class="note" id="checked"></span></h2>
+  <div class="tiles" id="tiles"></div>
+</section>
+
+<section aria-labelledby="hist-h">
+  <h2 id="hist-h">History</h2>
+  <div class="filters" role="group" aria-label="Time range" id="filters"></div>
+  <p class="note bucket" id="bucket"></p>
+  <div class="charts" id="charts"></div>
+</section>
+
+<script>
+const RANGES = { "1h": "1 hour", "24h": "24 hours", "7d": "7 days", "30d": "30 days" };
+const BUCKET = { 60: "Each point is one 1-minute reading.", 300: "Each point averages 5 minutes.",
+                 1800: "Each point averages 30 minutes.", 7200: "Each point averages 2 hours." };
+const pct = v => v == null ? "–" : (v < 10 ? v.toFixed(1) : Math.round(v)) + "%";
+const deg = v => v == null ? "–" : Math.round(v) + " °C";
+const gib = v => v == null ? "–" : v.toFixed(1) + " GiB";
+const CHARTS = [
+  { id: "cpu", title: "CPU usage", min: 0, floorMax: 10, series: [
+    { key: "cpu", name: "Average", short: "", color: "--s1", fmt: pct },
+    { key: "cpu_max", name: "Peak", hidden: true, fmt: pct }] },
+  { id: "temp", title: "Temperature", minSpan: 10, series: [
+    { key: "cpu_temp", name: "CPU", short: "CPU", color: "--s1", fmt: deg },
+    { key: "ssd_temp", name: "SSD", short: "SSD", color: "--s2", fmt: deg, needs: "ssd_temp" }] },
+  { id: "mem", title: "Memory used (GiB)", min: 0, ref: { key: "mem_total", label: "total" }, series: [
+    { key: "mem_used", name: "All", short: "All", color: "--s1", fmt: gib, end: v => v.toFixed(1) },
+    { key: "claude_mem", name: "Claude Code", short: "Claude", color: "--s2", fmt: gib, end: v => v.toFixed(1) },
+    { key: "swap_used", name: "Swap", hidden: true, fmt: gib }] },
+  { id: "battery", title: "Battery", needs: "battery", min: 0, max: 100, series: [
+    { key: "battery", name: "Charge", short: "", color: "--s1", fmt: pct },
+    { key: "on_ac", name: "Power", hidden: true, fmt: v => v == null ? "–" : v >= 1 ? "AC" : "on battery" }] },
+];
+
+let range = RANGES[localStorage.getItem("range")] ? localStorage.getItem("range") : "24h";
+let status = null, series = null;
+// Hardware this machine lacks (a desktop's battery, a SATA disk's missing NVMe sensor) reads as
+// null: its chart, series and legend entry are left out.
+const has = key => !(status && status.reading && status.reading[key] == null);
+const present = def => def.series.filter(x => !x.needs || has(x.needs));
+
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v; else if (k === "style") e.style.cssText = v; else e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null) e.append(k);  // strings go in as text, never HTML
+  return e;
+}
+function s(tag, attrs = {}, text) {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  return e;
+}
+const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const measure = document.createElement("canvas").getContext("2d");
+measure.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif';
+const textWidth = t => measure.measureText(t).width;
+const time = t => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const dayTime = t => new Date(t * 1000).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+function ago(sec) {
+  if (sec < 90) return "just now";
+  if (sec < 5400) return Math.round(sec / 60) + " min ago";
+  if (sec < 172800) return Math.round(sec / 3600) + " h ago";
+  return Math.round(sec / 86400) + " days ago";
+}
+function dur(sec) {
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+
+/* ---------- Now: tiles ---------- */
+const GLYPH = { good: "✓", warning: "!", critical: "✕" };
+function tile(label, value, sub, state) {
+  return el("div", { class: "tile" },
+    el("div", { class: "label" }, label),
+    el("div", { class: "value" }, state ? el("span", { class: "icon " + state, "aria-hidden": "true" }, GLYPH[state]) : null, value),
+    sub ? el("div", { class: "sub" }, sub) : null);
+}
+function renderTiles() {
+  const st = status, r = st.reading || {}, c = st.checks || {}, now = st.now;
+  document.getElementById("host").textContent = st.host;
+  document.title = st.host;
+  const asof = document.getElementById("asof");
+  asof.replaceChildren();
+  if (st.reading) {
+    const late = now - r.ts > 180;
+    asof.append(late ? el("span", { class: "icon warning", "aria-hidden": "true" }, "!") : "", late ? " " : "",
+      `Last reading ${time(r.ts)}` + (late ? ` (${ago(now - r.ts)}: recording has stopped)` : ""));
+  } else asof.textContent = "Waiting for the first reading (one a minute).";
+  document.getElementById("checked").textContent = st.checks
+    ? `· updates, restart and services checked every 15 min, last at ${time(c.ts)}` : "";
+
+  const T = [];
+  if (c.error) T.push(tile("Checks", "Failed", c.error, "critical"));
+  else if (st.checks) {
+    T.push(c.reboot_required
+      ? tile("Restart", "Needed", (c.reboot_pkgs || []).join(", ") || "an installed update needs it", "warning")
+      : tile("Restart", "Not needed", "kernel " + st.kernel, "good"));
+    if (c.updates != null)  // only where apt-check exists (Debian/Ubuntu)
+      T.push(tile("Updates", `${c.updates} waiting`, c.security ? `${c.security} are security updates` : "none are security updates",
+        c.security ? "warning" : null));
+    T.push(c.failed.length
+      ? tile("Failed services", String(c.failed.length), c.failed.join(", "), "critical")
+      : tile("Failed services", "None", "system and user", "good"));
+  }
+  if (st.reading) {
+    const bat = r.battery == null ? null : `battery ${pct(r.battery)}`;
+    if (r.on_ac != null)  // laptops; a desktop has no AC sensor
+      T.push(r.on_ac ? tile("Power", "On AC", bat, "good") : tile("Power", "On battery", bat, "warning"));
+    T.push(tile("Uptime", dur(now - st.boot), "since " + dayTime(st.boot)));
+    T.push(tile("CPU", pct(r.cpu), `load ${r.load1 == null ? "–" : r.load1.toFixed(2)} on ${st.cpus} threads`));
+    T.push(tile("Temperature", "CPU " + deg(r.cpu_temp), r.ssd_temp == null ? null : "SSD " + deg(r.ssd_temp)));
+    T.push(tile("Memory", `${(r.mem_used / 2 ** 30).toFixed(1)} of ${gib(r.mem_total / 2 ** 30)}`, "swap " + gib(r.swap_used / 2 ** 30)));
+    T.push(tile("Disk", `${Math.round(r.disk_used / 2 ** 30)} of ${Math.round(r.disk_total / 2 ** 30)} GiB`,
+      `${Math.round(100 * r.disk_used / r.disk_total)}% used`));
+    T.push(tile("Claude Code", `${r.claude_n} sessions`, gib(r.claude_mem / 2 ** 30) + " of memory"));
+  }
+  document.getElementById("tiles").replaceChildren(...T);
+}
+
+/* ---------- History: charts ---------- */
+function niceScale(lo, hi) {
+  if (!(hi > lo)) hi = lo + 1;
+  const raw = (hi - lo) / 4, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= raw);
+  const a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step, ticks = [];
+  for (let v = a; v <= b + step / 1e6; v += step) ticks.push(+v.toFixed(6));
+  return { lo: a, hi: b, ticks };
+}
+function yScale(def, rows) {
+  if (def.max != null) return niceScale(def.min, def.max);
+  const vals = rows.flatMap(r => present(def).filter(x => !x.hidden).map(x => r[x.key])).filter(v => v != null);
+  if (def.ref) vals.push(...rows.map(r => r[def.ref.key]).filter(v => v != null));
+  if (!vals.length) return niceScale(0, 1);
+  let lo = def.min ?? Math.min(...vals), hi = Math.max(...vals, def.floorMax ?? -Infinity);
+  if (def.minSpan && hi - lo < def.minSpan) {  // a flat line shouldn't fill the chart with tenths of a degree
+    const mid = (lo + hi) / 2;
+    lo = mid - def.minSpan / 2; hi = mid + def.minSpan / 2;
+  }
+  return niceScale(lo, hi);
+}
+function xTicks(since, now) {
+  const d = new Date(since * 1000), out = [];
+  if (range === "1h") { d.setSeconds(0, 0); d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15); }
+  else if (range === "24h") { d.setMinutes(0, 0, 0); d.setHours(Math.ceil(d.getHours() / 4) * 4); }
+  else { d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 1); }
+  while (d.getTime() <= now * 1000) {
+    out.push(d.getTime() / 1000);
+    if (range === "1h") d.setMinutes(d.getMinutes() + 15);
+    else if (range === "24h") d.setHours(d.getHours() + 4);
+    else d.setDate(d.getDate() + (range === "7d" ? 1 : 5));
+  }
+  return out;
+}
+function xLabel(t) {
+  const d = new Date(t * 1000);
+  if (range === "1h") return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (range === "24h") return d.toLocaleTimeString([], { hour: "numeric" });
+  if (range === "7d") return d.toLocaleDateString([], { weekday: "short", day: "numeric" });
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+// A gap longer than 1.5 buckets (box off, service down) breaks the line instead of bridging it.
+function linePath(rows, key, x, y, step) {
+  let d = "", prev = null, n = 0;
+  const end = () => { if (n === 1) d += "l0,0"; };  // a lone point still shows as a dot
+  for (const r of rows) {
+    const v = r[key];
+    if (v == null) { end(); n = 0; prev = null; continue; }
+    const join = prev != null && r.t - prev <= step * 1.5;
+    if (!join) { end(); n = 0; }
+    d += (join ? "L" : "M") + x(r.t).toFixed(1) + "," + y(v).toFixed(1);
+    n++; prev = r.t;
+  }
+  end();
+  return d;
+}
+
+function card(def) {
+  let fig = document.getElementById("chart-" + def.id);
+  if (fig) return fig;
+  const drawn = present(def).filter(x => !x.hidden);
+  const legend = drawn.length > 1 ? el("span", { class: "legend" }, ...drawn.map(x =>
+    el("span", {}, el("i", { class: "key", style: `background: var(${x.color})` }), x.name))) : null;
+  const btn = el("button", { class: "tbtn", type: "button", "aria-expanded": "false" }, "Table");
+  fig = el("figure", { id: "chart-" + def.id },
+    el("figcaption", {}, el("span", { class: "title" }, def.title), legend, btn),
+    el("div", { class: "plot" }), el("div", { class: "tablewrap", hidden: "" }));
+  btn.onclick = () => {
+    const open = btn.getAttribute("aria-expanded") !== "true";
+    btn.setAttribute("aria-expanded", String(open));
+    btn.textContent = open ? "Chart" : "Table";
+    fig.querySelector(".plot").hidden = open;
+    fig.querySelector(".tablewrap").hidden = !open;
+    if (open) renderTable(def, fig);
+  };
+  document.getElementById("charts").append(fig);
+  return fig;
+}
+
+function renderTable(def, fig) {
+  const rows = series.rows.slice().reverse();
+  const when = series.step >= 1800 ? dayTime : (range === "1h" ? time : dayTime);
+  const table = el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Time"), ...present(def).map(x => el("th", {}, x.name)))),
+    el("tbody", {}, ...rows.map(r => el("tr", {}, el("td", {}, when(r.t)),
+      ...present(def).map(x => el("td", {}, x.fmt(r[x.key])))))));
+  fig.querySelector(".tablewrap").replaceChildren(table);
+}
+
+function renderChart(def) {
+  const fig = card(def), plot = fig.querySelector(".plot");
+  if (fig.querySelector(".tbtn").getAttribute("aria-expanded") === "true") renderTable(def, fig);
+  const rows = series.rows, step = series.step, since = series.since, now = series.now;
+  const drawn = present(def).filter(x => !x.hidden);
+  const ends = drawn.map(sr => {
+    const last = rows.slice().reverse().find(r => r[sr.key] != null);
+    return last && { sr, t: last.t, v: last[sr.key], text: (sr.short ? sr.short + " " : "") + (sr.end || sr.fmt)(last[sr.key]) };
+  }).filter(Boolean);
+  const refs = def.ref ? rows.map(r => r[def.ref.key]).filter(v => v != null) : [];
+  const refText = refs.length ? `${Math.max(...refs).toFixed(1)} ${def.ref.label}` : "";
+  // The right margin fits the longest end label, so none is clipped.
+  const W = Math.max(plot.clientWidth, 260), H = 190;
+  const m = { l: 34, r: Math.ceil(Math.max(24, ...ends.map(e => textWidth(e.text)), textWidth(refText))) + 14, t: 8, b: 24 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const ys = yScale(def, rows);
+  const x = t => m.l + (t - since) / (now - since) * pw;
+  const y = v => m.t + ph - (v - ys.lo) / (ys.hi - ys.lo) * ph;
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, tabindex: "0", role: "img",
+    "aria-label": `${def.title}, past ${RANGES[range]}. Use the left and right arrow keys to read values, or open the table.` });
+
+  for (const v of ys.ticks) {
+    svg.append(s("line", { x1: m.l, x2: m.l + pw, y1: y(v), y2: y(v), stroke: v === ys.lo ? cssVar("--axis") : cssVar("--grid"), "stroke-width": 1, "shape-rendering": "crispEdges" }));
+    svg.append(s("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, String(v)));
+  }
+  let lastX = -Infinity;
+  for (const t of xTicks(since, now)) {
+    const xt = x(t), label = xLabel(t), half = textWidth(label) / 2;
+    if (xt - half < m.l - 4 || xt + half > m.l + pw + 4 || xt - half < lastX + 10) continue;  // thin ticks on narrow screens
+    svg.append(s("text", { x: xt, y: H - 6, "text-anchor": "middle" }, label));
+    lastX = xt + half;
+  }
+  if (refText) {
+    const rv = Math.max(...refs);
+    svg.append(s("line", { x1: m.l, x2: m.l + pw, y1: y(rv), y2: y(rv), stroke: cssVar("--axis"), "stroke-width": 1, "shape-rendering": "crispEdges" }));
+    svg.append(s("text", { x: m.l + pw + 6, y: y(rv) + 4 }, refText));
+  }
+
+  if (!rows.length) {
+    svg.append(s("text", { class: "empty", x: m.l + pw / 2, y: m.t + ph / 2, "text-anchor": "middle" }, "No readings in this range yet"));
+  }
+  for (const sr of drawn) {
+    svg.append(s("path", { d: linePath(rows, sr.key, x, y, step), fill: "none", stroke: `var(${sr.color})`,
+      "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  }
+  // End labels name the line where they don't collide; where they would, the legend + tooltip carry it.
+  const collide = ends.length > 1 && ends.some((a, i) => ends.some((b, j) => i < j && Math.abs(y(a.v) - y(b.v)) < 13));
+  for (const e of ends) {
+    svg.append(s("circle", { cx: x(e.t), cy: y(e.v), r: 4, fill: `var(${e.sr.color})`, stroke: cssVar("--surface"), "stroke-width": 2 }));
+    if (!collide) svg.append(s("text", { class: "end", x: m.l + pw + 8, y: y(e.v) + 4 }, e.text));
+  }
+
+  // Crosshair + tooltip: snaps to the nearest bucket, lists every series at that time.
+  const hair = s("line", { y1: m.t, y2: m.t + ph, stroke: cssVar("--axis"), "stroke-width": 1, visibility: "hidden" });
+  const dots = drawn.map(sr => s("circle", { r: 4, fill: `var(${sr.color})`, stroke: cssVar("--surface"), "stroke-width": 2, visibility: "hidden" }));
+  svg.append(hair, ...dots);
+  const tip = el("div", { class: "tip", hidden: "" });
+  let idx = -1;
+  const show = i => {
+    if (!rows.length) return;
+    idx = Math.max(0, Math.min(rows.length - 1, i));
+    const r = rows[idx], px = x(r.t);
+    hair.setAttribute("x1", px); hair.setAttribute("x2", px); hair.setAttribute("visibility", "visible");
+    drawn.forEach((sr, k) => {
+      const v = r[sr.key];
+      dots[k].setAttribute("visibility", v == null ? "hidden" : "visible");
+      if (v != null) { dots[k].setAttribute("cx", px); dots[k].setAttribute("cy", y(v)); }
+    });
+    tip.replaceChildren(el("div", { class: "when" }, range === "1h" ? time(r.t) : dayTime(r.t)),
+      ...present(def).map(sr => el("div", { class: "row" },
+        el("i", { class: "key", style: sr.hidden ? "background: transparent" : `background: var(${sr.color})` }),
+        el("strong", {}, sr.fmt(r[sr.key])), el("span", { class: "name" }, sr.name))));
+    tip.hidden = false;
+    const scale = plot.clientWidth / W, left = px * scale;
+    tip.style.left = (left + 12 + tip.offsetWidth > plot.clientWidth ? left - 12 - tip.offsetWidth : left + 12) + "px";
+  };
+  const hide = () => { hair.setAttribute("visibility", "hidden"); dots.forEach(d => d.setAttribute("visibility", "hidden")); tip.hidden = true; };
+  const nearest = ev => {
+    const t = since + ((ev.clientX - svg.getBoundingClientRect().left) * W / svg.clientWidth - m.l) / pw * (now - since);
+    let best = 0;
+    rows.forEach((r, i) => { if (Math.abs(r.t - t) < Math.abs(rows[best].t - t)) best = i; });
+    return best;
+  };
+  svg.addEventListener("pointermove", ev => show(nearest(ev)));
+  svg.addEventListener("pointerdown", ev => show(nearest(ev)));
+  svg.addEventListener("pointerleave", hide);
+  svg.addEventListener("focus", () => show(rows.length - 1));
+  svg.addEventListener("blur", hide);
+  svg.addEventListener("keydown", ev => {
+    if (ev.key === "ArrowLeft") { show(idx - 1); ev.preventDefault(); }
+    if (ev.key === "ArrowRight") { show(idx + 1); ev.preventDefault(); }
+  });
+  plot.replaceChildren(svg, tip);
+}
+
+function renderCharts() {
+  const first = status.first_reading, b = BUCKET[series.step] || "";
+  const partial = first && first > series.since + series.step ? ` Recording started ${dayTime(first)}; earlier is blank.` : "";
+  document.getElementById("bucket").textContent = b + partial;
+  const shown = CHARTS.filter(def => !def.needs || has(def.needs));
+  CHARTS.forEach(def => { card(def).hidden = !shown.includes(def); });  // every card in the grid first, so each measures its settled width
+  shown.forEach(renderChart);
+}
+
+function renderFilters() {
+  const f = document.getElementById("filters");
+  f.replaceChildren(...Object.entries(RANGES).map(([k, label]) => {
+    const b = el("button", { type: "button", "aria-pressed": String(k === range) }, label);
+    b.onclick = () => { range = k; localStorage.setItem("range", k); renderFilters(); load(); };
+    return b;
+  }));
+}
+
+let seq = 0;
+async function load() {
+  const mine = ++seq;  // a range click mid-refresh wins; the older response is dropped
+  document.body.classList.add("loading");  // hold the previous render, dimmed, until the new one lands
+  try {
+    const [st, se] = await Promise.all([
+      fetch("/api/status").then(r => r.json()),
+      fetch("/api/series?range=" + range).then(r => r.json())]);
+    if (mine !== seq) return;
+    status = st; series = se;
+    renderTiles(); renderCharts();
+  } catch (e) {
+    if (mine === seq) document.getElementById("asof").textContent = "Can't reach the box: " + e.message;
+  } finally {
+    if (mine === seq) document.body.classList.remove("loading");
+  }
+}
+
+renderFilters();
+load();
+setInterval(load, 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+let resizeTimer;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => series && renderCharts(), 150); });
+</script>
+</body>
+</html>

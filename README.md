@@ -24,6 +24,10 @@ features. It is not affiliated with Anthropic.
   device, a phone-started one keeps the phone's title in a terminal, and names you set with
   `/rename` stick. Its tab shows ◐ while Claude works, ✳ when it's done or waiting on you, and
   💤 once it has been done for 5 minutes, so you can tell what just finished.
+- **Check on the box from anywhere.** An optional health page shows uptime, temperatures, CPU,
+  memory, disk, battery, pending updates, a needed restart and Claude's sessions, with up to 30
+  days of history. An optional healthchecks.io ping keeps its last status readable, and alerts
+  you, when the box goes down. (Linux.)
 - **Try your app on your phone.** Open it against the box's dev server.
 - **Private by default.** Every device reaches the box over Tailscale, with no ports open on
   your router. With `--firewall`, a Linux box accepts connections only from your devices.
@@ -87,6 +91,7 @@ work beyond the cloud VM's limits, *"use Remote Control to run Claude Code on yo
 | `bin/eso-phone-sync` | Hook: `/resume` lists sessions started from the phone, named `☏ · <the phone's title>` |
 | `bin/eso-tab-stop` | Hook: the tab turns `✳` when Claude's turn ends, unless background agents are still running |
 | `bin/eso-update-check` | Hook and `boxls`: says when a newer eso-box is out; never installs anything |
+| `bin/eso-health`, `config/health.html` | The optional health page (`install.sh --health`, Linux): a reading a minute, served at `http://<box>:8090` to your tailnet only |
 | `config/tmux.conf` | Terminal tab shows `◐ <Claude's title> · <session>` while working, `✳` when done, `💤` 5 min later |
 | `client/box.sh`, `client/box.ps1` | `box` and `boxls` for bash/zsh (Linux, macOS, WSL, Termux) and PowerShell |
 
@@ -132,7 +137,7 @@ next to yours, and is safe to rerun. Rerunning it is also how you update (see [U
    ```bash
    git clone https://github.com/blumalex/eso-box ~/eso-box && cd ~/eso-box
    sudo box/linux/setup-root.sh            # add --firewall once you're connected over Tailscale
-   ./install.sh --dir ~/code/myproject
+   ./install.sh --dir ~/code/myproject     # add --health for the health page
    sudo systemctl reboot -i
    ```
 
@@ -171,6 +176,31 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
 - Sessions started **from the phone** run on the box too. To continue one in a terminal, once:
   let Claude finish its turn, run `box`, type `/resume` and pick its `☏ · <title>` entry.
   From then on use the terminal session's own entry on the phone. See [docs/using.md](docs/using.md).
+
+## Health page (Linux, optional)
+
+`./install.sh --health` runs a small page at `http://<box>:8090`, for any device on your tailnet:
+
+- **Now:** restart needed, pending updates (Debian/Ubuntu), failed services, power (laptops),
+  uptime, CPU, temperatures, memory, disk, and Claude Code's sessions and memory.
+- **History:** the past 1 hour, 24 hours, 7 days or 30 days of CPU, temperatures, memory and
+  battery, from a reading every minute, kept 31 days in `~/.local/share/eso-box/health.db`. A
+  break in a line is time the box was off.
+
+It answers only your tailnet and the box itself, with or without `--firewall`. A rerun keeps it
+on; `./install.sh --no-health` removes it.
+
+**When the box is down, so is its page.** To still see its last status, and get an alert when it
+goes quiet: create a free check at [healthchecks.io](https://healthchecks.io) with a period of
+15 minutes and a grace time of 15 minutes, then put the check's ping URL on the box:
+
+```bash
+(umask 077; echo 'https://hc-ping.com/<your-check-id>' > ~/.config/eso-box/health-ping-url)
+```
+
+Every 15 minutes the box sends that URL a short status text (the "Now" numbers). healthchecks.io
+keeps the recent ones, and when a ping is late it emails you, or notifies your phone through one
+of its integrations. Any healthchecks-compatible URL works, a self-hosted one included.
 
 ## Update
 

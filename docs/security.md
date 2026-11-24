@@ -24,6 +24,11 @@ These are the choices eso-box's setup makes, and what to do if the box goes miss
   client's does (the box's IP address, git's version) and nothing else. It never downloads or
   installs anything: updating is always your own `git pull` and rerun. Turn the check off with
   `ESO_BOX_UPDATE_CHECK=off` in `~/.config/eso-box/config`; a rerun of `install.sh` keeps it.
+- **The health page** (`install.sh --health`, off by default) listens on port 8090 and answers
+  only the box itself and Tailscale addresses (100.64.0.0/10), so anyone on your tailnet can
+  read it: host name, kernel version, uptime, failed service names, resource use. It sends
+  nothing anywhere unless you set a ping URL; then every 15 minutes it sends that URL the same
+  numbers as a short text, and nothing else.
 
 ## If the box is stolen
 
