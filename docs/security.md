@@ -26,9 +26,10 @@ These are the choices eso-box's setup makes, and what to do if the box goes miss
   `ESO_BOX_UPDATE_CHECK=off` in `~/.config/eso-box/config`; a rerun of `install.sh` keeps it.
 - **The health page** (`install.sh --health`, off by default) listens on port 8090 and answers
   only the box itself and Tailscale addresses (100.64.0.0/10), so anyone on your tailnet can
-  read it: host name, kernel version, uptime, failed service names, resource use. It sends
-  nothing anywhere unless you set a ping URL; then every 15 minutes it sends that URL the same
-  numbers as a short text, and nothing else.
+  read it: host name, kernel version, uptime, failed service names, the name of the last process
+  killed for lack of memory, resource use. To count those kills it reads the system journal's
+  kernel and systemd-oomd lines. It sends nothing anywhere unless you set a ping URL; then every
+  15 minutes it sends that URL the same status as a short text, and nothing else.
 
 ## If the box is stolen
 

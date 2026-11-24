@@ -99,6 +99,8 @@ const BUCKET = { 60: "Each point is one 1-minute reading.", 300: "Each point ave
 const pct = v => v == null ? "–" : (v < 10 ? v.toFixed(1) : Math.round(v)) + "%";
 const deg = v => v == null ? "–" : Math.round(v) + " °C";
 const gib = v => v == null ? "–" : v.toFixed(1) + " GiB";
+const num = v => v == null ? "–" : Math.round(v).toLocaleString();
+const rpm = v => v == null ? "–" : num(v) + " rpm";
 const CHARTS = [
   { id: "cpu", title: "CPU usage", min: 0, floorMax: 10, series: [
     { key: "cpu", name: "Average", short: "", color: "--s1", fmt: pct },
@@ -106,10 +108,17 @@ const CHARTS = [
   { id: "temp", title: "Temperature", minSpan: 10, series: [
     { key: "cpu_temp", name: "CPU", short: "CPU", color: "--s1", fmt: deg },
     { key: "ssd_temp", name: "SSD", short: "SSD", color: "--s2", fmt: deg, needs: "ssd_temp" }] },
+  { id: "throttle", title: "CPU throttled by heat", needs: "throttle_pct", min: 0, floorMax: 5, series: [
+    { key: "throttle_pct", name: "Share of the time", short: "", color: "--s1", fmt: pct }] },
+  { id: "fans", title: "Fans (rpm)", needs: "fan1", min: 0, floorMax: 1000, series: [
+    { key: "fan1", name: "Fan 1", short: "Fan 1", color: "--s1", fmt: rpm, end: num },
+    { key: "fan2", name: "Fan 2", short: "Fan 2", color: "--s2", fmt: rpm, end: num, needs: "fan2" }] },
   { id: "mem", title: "Memory used (GiB)", min: 0, ref: { key: "mem_total", label: "total" }, series: [
     { key: "mem_used", name: "All", short: "All", color: "--s1", fmt: gib, end: v => v.toFixed(1) },
     { key: "claude_mem", name: "Claude Code", short: "Claude", color: "--s2", fmt: gib, end: v => v.toFixed(1) },
     { key: "swap_used", name: "Swap", hidden: true, fmt: gib }] },
+  { id: "pressure", title: "Memory pressure", needs: "mem_pressure", min: 0, floorMax: 5, series: [
+    { key: "mem_pressure", name: "Time a task waited for memory", short: "", color: "--s1", fmt: pct }] },
   { id: "battery", title: "Battery", needs: "battery", min: 0, max: 100, series: [
     { key: "battery", name: "Charge", short: "", color: "--s1", fmt: pct },
     { key: "on_ac", name: "Power", hidden: true, fmt: v => v == null ? "–" : v >= 1 ? "AC" : "on battery" }] },
@@ -173,7 +182,7 @@ function renderTiles() {
       `Last reading ${time(r.ts)}` + (late ? ` (${ago(now - r.ts)}: recording has stopped)` : ""));
   } else asof.textContent = "Waiting for the first reading (one a minute).";
   document.getElementById("checked").textContent = st.checks
-    ? `· updates, restart and services checked every 15 min, last at ${time(c.ts)}` : "";
+    ? `· updates, restart, services and memory kills checked every 15 min, last at ${time(c.ts)}` : "";
 
   const T = [];
   if (c.error) T.push(tile("Checks", "Failed", c.error, "critical"));
@@ -187,6 +196,10 @@ function renderTiles() {
     T.push(c.failed.length
       ? tile("Failed services", String(c.failed.length), c.failed.join(", "), "critical")
       : tile("Failed services", "None", "system and user", "good"));
+    if (c.oom_kills != null) T.push(c.oom_kills
+      ? tile("Out-of-memory kills", String(c.oom_kills),
+        "since boot" + (c.oom_last ? ` · last: ${c.oom_last.what}, ${c.oom_last.at}` : ""), "warning")
+      : tile("Out-of-memory kills", "None", "since boot", "good"));
   }
   if (st.reading) {
     const bat = r.battery == null ? null : `battery ${pct(r.battery)}`;
@@ -195,7 +208,10 @@ function renderTiles() {
     T.push(tile("Uptime", dur(now - st.boot), "since " + dayTime(st.boot)));
     T.push(tile("CPU", pct(r.cpu), `load ${r.load1 == null ? "–" : r.load1.toFixed(2)} on ${st.cpus} threads`));
     T.push(tile("Temperature", "CPU " + deg(r.cpu_temp), r.ssd_temp == null ? null : "SSD " + deg(r.ssd_temp)));
-    T.push(tile("Memory", `${(r.mem_used / 2 ** 30).toFixed(1)} of ${gib(r.mem_total / 2 ** 30)}`, "swap " + gib(r.swap_used / 2 ** 30)));
+    if (r.fan1 != null)  // where the kernel reports a fan
+      T.push(r.fan2 == null ? tile("Fan", num(r.fan1), "rpm") : tile("Fans", `${num(r.fan1)} / ${num(r.fan2)}`, "rpm, fan 1 / fan 2"));
+    T.push(tile("Memory", `${(r.mem_used / 2 ** 30).toFixed(1)} of ${gib(r.mem_total / 2 ** 30)}`,
+      "swap " + gib(r.swap_used / 2 ** 30) + (r.mem_pressure == null ? "" : ` · pressure ${pct(r.mem_pressure)}`)));
     T.push(tile("Disk", `${Math.round(r.disk_used / 2 ** 30)} of ${Math.round(r.disk_total / 2 ** 30)} GiB`,
       `${Math.round(100 * r.disk_used / r.disk_total)}% used`));
     T.push(tile("Claude Code", `${r.claude_n} sessions`, gib(r.claude_mem / 2 ** 30) + " of memory"));

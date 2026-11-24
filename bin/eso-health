@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """eso-box: a health page for the box at http://<box>:8090, reachable only from your tailnet.
 
-Records a reading every minute (CPU, load, memory, temperatures, disk, battery and AC, Claude
-Code sessions and their memory) and keeps 31 days; every 15 minutes it checks for pending
-updates, a needed restart and failed services. Runs as the systemd user service eso-health,
+Records a reading every minute (CPU, load, memory, temperatures, fans, time the CPU spent
+throttled by heat, memory pressure, disk, battery and AC, Claude Code sessions and their memory)
+and keeps 31 days; every 15 minutes it checks for pending updates, a needed restart, failed
+services and out-of-memory kills. Runs as the systemd user service eso-health,
 which install.sh --health sets up (Linux only: it reads /proc and /sys).
 
 Off-box status (optional): put a healthchecks.io ping URL in ~/.config/eso-box/health-ping-url
@@ -14,6 +15,7 @@ import glob
 import ipaddress
 import json
 import os
+import re
 import socket
 import sqlite3
 import subprocess
@@ -35,6 +37,9 @@ PORT = 8090
 ALLOWED = [ipaddress.ip_network(n) for n in ("127.0.0.0/8", "100.64.0.0/10")]
 CLAUDE_VERSIONS = os.path.join(HOME, ".local/share/claude/versions/")
 APT_CHECK = "/usr/lib/update-notifier/apt-check"  # Debian/Ubuntu; elsewhere no updates tile
+# ms the CPU package has spent throttled since boot (Intel; every CPU in the package reports the
+# same total); elsewhere no throttling chart
+THROTTLE_MS = "/sys/devices/system/cpu/cpu0/thermal_throttle/package_throttle_total_time_ms"
 KEEP_S = 31 * 86400
 CHECK_EVERY_S = 15 * 60
 GIB = 1 << 30
@@ -42,7 +47,8 @@ GIB = 1 << 30
 RANGES = {"1h": (3600, 60), "24h": (86400, 300), "7d": (7 * 86400, 1800), "30d": (30 * 86400, 7200)}
 
 READING_COLS = ["cpu", "load1", "mem_used", "mem_total", "swap_used", "cpu_temp", "ssd_temp",
-                "disk_used", "disk_total", "battery", "on_ac", "claude_n", "claude_mem"]
+                "disk_used", "disk_total", "battery", "on_ac", "claude_n", "claude_mem",
+                "fan1", "fan2", "throttle_pct", "mem_pressure"]
 
 
 def db():
@@ -57,6 +63,10 @@ def init_db():
         con.execute("PRAGMA journal_mode=WAL")
         con.execute(f"CREATE TABLE IF NOT EXISTS readings (ts INTEGER PRIMARY KEY, "
                     f"{', '.join(c + ' REAL' for c in READING_COLS)})")
+        have = {r[1] for r in con.execute("PRAGMA table_info(readings)")}
+        for c in READING_COLS:
+            if c not in have:  # added after the table was made; older rows read NULL
+                con.execute(f"ALTER TABLE readings ADD COLUMN {c} REAL")
         con.execute("CREATE TABLE IF NOT EXISTS checks (ts INTEGER PRIMARY KEY, data TEXT)")
 
 
@@ -100,6 +110,29 @@ def cpu_temp():
             return v
 
 
+def fans():
+    """rpm of the first two fans the kernel reports (a laptop's, a Pi's cooler, a board's fan
+    headers); None for each one the machine doesn't have. The generic acpi_fan device counts only
+    where nothing else reports a fan: beside a platform driver's real reading (a ThinkPad's) it
+    sits at 0."""
+    paths = sorted(glob.glob("/sys/class/hwmon/hwmon*/fan[0-9]*_input"))
+    named = [p for p in paths if safe(lambda p=p: read(os.path.dirname(p) + "/name")) != "acpi_fan"]
+    rpm = [safe(lambda p=p: int(read(p))) for p in (named or paths)[:2]]
+    return rpm + [None] * (2 - len(rpm))
+
+
+def stall_us():
+    """µs since boot that at least one task waited for memory (PSI "some"; Linux 4.20+)."""
+    return int(read("/proc/pressure/memory").split("\n")[0].rsplit("total=", 1)[1])
+
+
+def share(before, after, span):
+    """How much of span a since-boot counter grew by, in %; None when either read failed."""
+    if before is None or after is None or span <= 0:
+        return None
+    return min(100.0, 100 * (after - before) / span)
+
+
 def power():
     """(battery %, on AC 1/0); None where the machine has no such supply (a desktop has neither)."""
     bat = ac = None
@@ -139,11 +172,12 @@ def claude_procs():
     return sessions, pss
 
 
-def reading(cpu_pct):
+def reading(cpu_pct, throttle_pct, mem_pressure):
     m = safe(meminfo) or {}
     fs = os.statvfs("/")
     n, pss = claude_procs()
     bat, ac = power()
+    fan1, fan2 = fans()
     return {
         "cpu": cpu_pct,
         "load1": safe(lambda: float(read("/proc/loadavg").split()[0])),
@@ -158,18 +192,24 @@ def reading(cpu_pct):
         "on_ac": ac,
         "claude_n": n,
         "claude_mem": pss,
+        "fan1": fan1,
+        "fan2": fan2,
+        "throttle_pct": throttle_pct,
+        "mem_pressure": mem_pressure,
     }
 
 
 def record_loop():
     busy0, total0 = cpu_counters()
+    t0, thr0, stall0 = time.monotonic(), safe(lambda: int(read(THROTTLE_MS))), safe(stall_us)
     last_prune = 0
     while True:
         time.sleep(60 - time.time() % 60)  # on the minute
         busy, total = cpu_counters()
+        t, thr, stall = time.monotonic(), safe(lambda: int(read(THROTTLE_MS))), safe(stall_us)
         cpu = 100 * (busy - busy0) / (total - total0) if total > total0 else None
-        busy0, total0 = busy, total
-        r = reading(cpu)
+        r = reading(cpu, share(thr0, thr, (t - t0) * 1e3), share(stall0, stall, (t - t0) * 1e6))
+        busy0, total0, t0, thr0, stall0 = busy, total, t, thr, stall
         now = int(time.time())
         with db() as con:
             con.execute(f"INSERT OR REPLACE INTO readings (ts, {', '.join(READING_COLS)}) "
@@ -189,6 +229,26 @@ def failed_units(*scope):
     return [line.split()[0] for line in p.stdout.splitlines() if line.strip()]
 
 
+def oom_kills():
+    """(kills since boot, the last one's {at, what} or None). The kernel counts its own OOM kills;
+    systemd-oomd, which Ubuntu runs to act first on memory pressure, is only in the journal. Reading
+    the system journal needs the adm or systemd-journal group: without it, oomd's kills and the
+    last kill's name go missing."""
+    kernel = int(next(line.split()[1] for line in read("/proc/vmstat").split("\n")
+                      if line.startswith("oom_kill ")))
+    p = subprocess.run(["journalctl", "-b", "-q", "--no-pager", "-o", "short-iso", "-g", "Killed",
+                        "_TRANSPORT=kernel", "+", "_SYSTEMD_UNIT=systemd-oomd.service"],
+                       capture_output=True, text=True, timeout=60)
+    lines = p.stdout.splitlines()
+    oomd = sum(" systemd-oomd[" in line for line in lines)
+    if not lines:
+        return kernel + oomd, None
+    # kernel: "Out of memory: Killed process 123 (name) ..."; oomd: "Killed /user.slice/.../x.scope due to ..."
+    m = re.search(r"Killed process \d+ \(([^)]+)\)|Killed (\S+)", lines[-1])
+    what = (m[1] or m[2].rsplit("/", 1)[-1]) if m else lines[-1].split(": ", 1)[-1]
+    return kernel + oomd, {"at": lines[-1][:16].replace("T", " "), "what": what}
+
+
 def run_checks():
     updates = security = None
     if os.path.exists(APT_CHECK):
@@ -196,12 +256,15 @@ def run_checks():
         p = subprocess.run([APT_CHECK], capture_output=True, text=True, timeout=300)
         updates, security = (int(x) for x in (p.stdout + p.stderr).strip().splitlines()[-1].split(";")[:2])
     reboot = os.path.exists("/var/run/reboot-required")
+    kills, last_kill = oom_kills()
     return {
         "updates": updates,
         "security": security,
         "reboot_required": reboot,
         "reboot_pkgs": safe(lambda: read("/var/run/reboot-required.pkgs").split()) if reboot else [],
         "failed": failed_units() + [u + " (user)" for u in failed_units("--user")],
+        "oom_kills": kills,
+        "oom_last": last_kill,
     }
 
 
@@ -232,12 +295,26 @@ def summary(st):
         if c["updates"] is not None:
             lines.append(f"Updates: {c['updates']} waiting, {c['security']} security")
         lines.append("Failed services: " + (", ".join(c["failed"]) or "none"))
+        if "oom_kills" in c:  # absent from checks made before this was added
+            last = c["oom_last"]
+            lines.append(f"Out-of-memory kills since boot: {c['oom_kills']}"
+                         + (f" (last: {last['what']}, {last['at']})" if last else ""))
     if r:
         if r["on_ac"] is not None or r["battery"] is not None:
             lines.append(f"Power: {({1: 'AC', 0: 'ON BATTERY'}).get(r['on_ac'], '?')}, battery {n(r['battery'])}%")
         lines += [
             f"CPU {n(r['cpu'], '.1f')}% (load {n(r['load1'], '.2f')}), CPU {n(r['cpu_temp'])} °C"
             + ("" if r["ssd_temp"] is None else f", SSD {n(r['ssd_temp'])} °C"),
+        ]
+        fans = [n(r[k]) for k in ("fan1", "fan2") if r.get(k) is not None]
+        extra = ([f"fans {' / '.join(fans)} rpm"] if fans else []) + (
+            [f"throttled {n(r['throttle_pct'], '.1f')}% of the last minute"]
+            if r.get("throttle_pct") is not None else []) + (
+            [f"memory pressure {n(r['mem_pressure'], '.1f')}%"] if r.get("mem_pressure") is not None else [])
+        if extra:  # only what this machine can report
+            text = ", ".join(extra)
+            lines.append(text[0].upper() + text[1:])
+        lines += [
             f"Memory {g(r['mem_used'])} of {g(r['mem_total'])} GiB (swap {g(r['swap_used'])}), "
             f"disk {g(r['disk_used'])} of {g(r['disk_total'])} GiB",
             f"Claude Code: {n(r['claude_n'])} sessions, {g(r['claude_mem'])} GiB",
@@ -285,7 +362,9 @@ def api_series(rng):
                    AVG(mem_used) / {GIB}.0 AS mem_used, AVG(claude_mem) / {GIB}.0 AS claude_mem,
                    AVG(swap_used) / {GIB}.0 AS swap_used, MAX(mem_total) / {GIB}.0 AS mem_total,
                    AVG(battery) AS battery, MIN(on_ac) AS on_ac,
-                   AVG(claude_n) AS claude_n
+                   AVG(claude_n) AS claude_n,
+                   AVG(fan1) AS fan1, AVG(fan2) AS fan2,
+                   AVG(throttle_pct) AS throttle_pct, AVG(mem_pressure) AS mem_pressure
             FROM readings WHERE ts >= ? GROUP BY t ORDER BY t""", (since,)).fetchall()
     return {"range": rng, "step": step, "since": since, "now": now,
             "rows": [dict(r) for r in rows]}

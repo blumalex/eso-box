@@ -24,9 +24,9 @@ features. It is not affiliated with Anthropic.
   device, a phone-started one keeps the phone's title in a terminal, and names you set with
   `/rename` stick. Its tab shows ◐ while Claude works, ✳ when it's done or waiting on you, and
   💤 once it has been done for 5 minutes, so you can tell what just finished.
-- **Check on the box from anywhere.** An optional health page shows uptime, temperatures, CPU,
-  memory, disk, battery, pending updates, a needed restart and Claude's sessions, with up to 30
-  days of history. An optional healthchecks.io ping keeps its last status readable, and alerts
+- **Check on the box from anywhere.** An optional health page shows uptime, temperatures, fans,
+  CPU, memory, disk, battery, pending updates, a needed restart, out-of-memory kills and Claude's
+  sessions, with up to 30 days of history. An optional healthchecks.io ping keeps its last status readable, and alerts
   you, when the box goes down. (Linux.)
 - **Try your app on your phone.** Open it against the box's dev server.
 - **Private by default.** Every device reaches the box over Tailscale, with no ports open on
@@ -181,11 +181,17 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
 
 `./install.sh --health` runs a small page at `http://<box>:8090`, for any device on your tailnet:
 
-- **Now:** restart needed, pending updates (Debian/Ubuntu), failed services, power (laptops),
-  uptime, CPU, temperatures, memory, disk, and Claude Code's sessions and memory.
-- **History:** the past 1 hour, 24 hours, 7 days or 30 days of CPU, temperatures, memory and
-  battery, from a reading every minute, kept 31 days in `~/.local/share/eso-box/health.db`. A
-  break in a line is time the box was off.
+- **Now:** restart needed, pending updates (Debian/Ubuntu), failed services, out-of-memory kills
+  since boot, power (laptops), uptime, CPU, temperatures, fans, memory and memory pressure, disk,
+  and Claude Code's sessions and memory.
+- **History:** the past 1 hour, 24 hours, 7 days or 30 days of CPU, temperatures, time the CPU
+  spent throttled by heat (Intel), fans, memory, memory pressure and battery, from a reading
+  every minute, kept 31 days in `~/.local/share/eso-box/health.db`. A break in a line is time
+  the box was off.
+
+Hardware a machine doesn't have, or can't report, is left out. The out-of-memory count includes
+systemd-oomd's kills (Ubuntu runs it) only if your user can read the system journal: the `adm`
+or `systemd-journal` group, which Ubuntu's first user is in.
 
 It answers only your tailnet and the box itself, with or without `--firewall`. A rerun keeps it
 on; `./install.sh --no-health` removes it.
