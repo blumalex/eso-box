@@ -4,8 +4,9 @@
 Records a reading every minute (CPU, load, memory, temperatures, fans, time the CPU spent
 throttled by heat, memory pressure, disk, battery and AC, Claude Code sessions and their memory)
 and keeps 31 days; every 15 minutes it checks for pending updates, a needed restart, failed
-services and out-of-memory kills. Runs as the systemd user service eso-health,
-which install.sh --health sets up (Linux only: it reads /proc and /sys).
+services and out-of-memory kills, and reads the boot disk's health where setup-root.sh's timer
+writes it. Runs as the systemd user service eso-health, which install.sh --health sets up
+(Linux only: it reads /proc and /sys).
 
 Off-box status (optional): put a healthchecks.io ping URL in ~/.config/eso-box/health-ping-url
 and every 15 minutes the box sends it a plain-text status. healthchecks.io then shows the last
@@ -40,6 +41,9 @@ APT_CHECK = "/usr/lib/update-notifier/apt-check"  # Debian/Ubuntu; elsewhere no 
 # ms the CPU package has spent throttled since boot (Intel; every CPU in the package reports the
 # same total); elsewhere no throttling chart
 THROTTLE_MS = "/sys/devices/system/cpu/cpu0/thermal_throttle/package_throttle_total_time_ms"
+# The boot disk's SMART data (smartctl -j -a), written hourly by the root timer that
+# box/linux/setup-root.sh sets up, since reading a drive needs root; without it, no disk health tile
+DISK_HEALTH = "/var/lib/eso-box/disk-health.json"
 KEEP_S = 31 * 86400
 CHECK_EVERY_S = 15 * 60
 GIB = 1 << 30
@@ -249,6 +253,28 @@ def oom_kills():
     return kernel + oomd, {"at": lines[-1][:16].replace("T", " "), "what": what}
 
 
+def disk_health():
+    """The boot disk's SMART summary, or None where setup-root.sh's timer doesn't write one. NVMe
+    drives report wear, spare and data written; other drives only pass or fail."""
+    if not os.path.exists(DISK_HEALTH):
+        return None
+    at = os.path.getmtime(DISK_HEALTH)
+    j = safe(lambda: json.loads(read(DISK_HEALTH))) or {}
+    h = j.get("nvme_smart_health_information_log") or {}
+    written = h.get("data_units_written")
+    return {
+        "at": at,
+        "model": j.get("model_name"),
+        "passed": (j.get("smart_status") or {}).get("passed"),  # None: smartctl couldn't tell
+        "critical_warning": h.get("critical_warning"),
+        "used_pct": h.get("percentage_used"),  # the drive's own estimate of its rated life used
+        "spare_pct": h.get("available_spare"),
+        "spare_min": h.get("available_spare_threshold"),
+        "media_errors": h.get("media_errors"),
+        "written_tb": None if written is None else written * 512000 / 1e12,  # a unit is 1000 × 512 B
+    }
+
+
 def run_checks():
     updates = security = None
     if os.path.exists(APT_CHECK):
@@ -265,6 +291,7 @@ def run_checks():
         "failed": failed_units() + [u + " (user)" for u in failed_units("--user")],
         "oom_kills": kills,
         "oom_last": last_kill,
+        "disk_health": safe(disk_health),
     }
 
 
@@ -299,6 +326,12 @@ def summary(st):
             last = c["oom_last"]
             lines.append(f"Out-of-memory kills since boot: {c['oom_kills']}"
                          + (f" (last: {last['what']}, {last['at']})" if last else ""))
+        d = c.get("disk_health")
+        if d:
+            lines.append("Disk health: " + {True: "passed", False: "FAILED", None: "no reading"}[d["passed"]]
+                         + ("" if d["used_pct"] is None else
+                            f", {d['used_pct']}% of rated life used, {n(d['media_errors'])} media errors, "
+                            f"spare {n(d['spare_pct'])}%, {n(d['written_tb'], '.1f')} TB written"))
     if r:
         if r["on_ac"] is not None or r["battery"] is not None:
             lines.append(f"Power: {({1: 'AC', 0: 'ON BATTERY'}).get(r['on_ac'], '?')}, battery {n(r['battery'])}%")

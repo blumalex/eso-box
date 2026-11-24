@@ -196,6 +196,18 @@ function renderTiles() {
     T.push(c.failed.length
       ? tile("Failed services", String(c.failed.length), c.failed.join(", "), "critical")
       : tile("Failed services", "None", "system and user", "good"));
+    const d = c.disk_health;
+    if (d) {  // where setup-root.sh's timer reads the boot disk
+      const age = now - d.at, stale = age > 3 * 3600;
+      const bad = d.passed === false || d.critical_warning > 0 || d.media_errors > 0 || d.spare_pct < d.spare_min;
+      const sub = d.passed == null ? ["smartctl couldn't read the disk"]
+        : d.used_pct == null ? [d.model]  // not NVMe: pass or fail only
+        : ["of its rated life", `${d.media_errors} media errors`, `spare ${d.spare_pct}%`,
+           `${d.written_tb == null ? "–" : d.written_tb.toFixed(1)} TB written`];
+      if (stale) sub.push(`read ${ago(age)}`);
+      T.push(tile("Disk health", d.passed == null ? "No reading" : d.used_pct != null ? `${d.used_pct}% worn` : d.passed ? "Passed" : "Failed",
+        sub.filter(Boolean).join(" · "), bad ? "critical" : stale || d.passed == null ? "warning" : "good"));
+    }
     if (c.oom_kills != null) T.push(c.oom_kills
       ? tile("Out-of-memory kills", String(c.oom_kills),
         "since boot" + (c.oom_last ? ` · last: ${c.oom_last.what}, ${c.oom_last.at}` : ""), "warning")

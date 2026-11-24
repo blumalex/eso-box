@@ -27,8 +27,9 @@ These are the choices eso-box's setup makes, and what to do if the box goes miss
 - **The health page** (`install.sh --health`, off by default) listens on port 8090 and answers
   only the box itself and Tailscale addresses (100.64.0.0/10), so anyone on your tailnet can
   read it: host name, kernel version, uptime, failed service names, the name of the last process
-  killed for lack of memory, resource use. To count those kills it reads the system journal's
-  kernel and systemd-oomd lines. It sends nothing anywhere unless you set a ping URL; then every
+  killed for lack of memory, the boot disk's model and health, resource use. To count those kills
+  it reads the system journal's kernel and systemd-oomd lines. The disk's health comes from a
+  root timer `setup-root.sh` adds, which runs only `smartctl` on that disk, hourly. It sends nothing anywhere unless you set a ping URL; then every
   15 minutes it sends that URL the same status as a short text, and nothing else.
 
 ## If the box is stolen

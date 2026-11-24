@@ -25,9 +25,9 @@ features. It is not affiliated with Anthropic.
   `/rename` stick. Its tab shows ◐ while Claude works, ✳ when it's done or waiting on you, and
   💤 once it has been done for 5 minutes, so you can tell what just finished.
 - **Check on the box from anywhere.** An optional health page shows uptime, temperatures, fans,
-  CPU, memory, disk, battery, pending updates, a needed restart, out-of-memory kills and Claude's
-  sessions, with up to 30 days of history. An optional healthchecks.io ping keeps its last status readable, and alerts
-  you, when the box goes down. (Linux.)
+  CPU, memory, disk and its health, battery, pending updates, a needed restart, out-of-memory
+  kills and Claude's sessions, with up to 30 days of history. An optional healthchecks.io ping
+  keeps its last status readable, and alerts you, when the box goes down. (Linux.)
 - **Try your app on your phone.** Open it against the box's dev server.
 - **Private by default.** Every device reaches the box over Tailscale, with no ports open on
   your router. With `--firewall`, a Linux box accepts connections only from your devices.
@@ -81,7 +81,7 @@ work beyond the cloud VM's limits, *"use Remote Control to run Claude Code on yo
 
 | Path | What it does |
 |---|---|
-| `box/linux/setup-root.sh` | System settings for running unattended: never sleep, ignore the lid, reboot by itself after a crash or freeze, skip the boot menu wait after a power cut, battery charge limit on laptops, optional tailnet-only firewall |
+| `box/linux/setup-root.sh` | System settings for running unattended: never sleep, ignore the lid, reboot by itself after a crash or freeze, skip the boot menu wait after a power cut, battery charge limit on laptops, the boot disk's health (SMART) for the health page, optional tailnet-only firewall |
 | `box/macos/setup-root.sh` | The same for a Mac (Mac mini). **Untested** |
 | `install.sh` | Installs the tools, tab titles and hooks, and runs Claude Code's Remote Control server as a service so sessions started from the phone run on the box |
 | `bin/eso-session` | What `box` runs on the box: opens or creates a tmux session running Claude |
@@ -182,8 +182,8 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
 `./install.sh --health` runs a small page at `http://<box>:8090`, for any device on your tailnet:
 
 - **Now:** restart needed, pending updates (Debian/Ubuntu), failed services, out-of-memory kills
-  since boot, power (laptops), uptime, CPU, temperatures, fans, memory and memory pressure, disk,
-  and Claude Code's sessions and memory.
+  since boot, disk health, power (laptops), uptime, CPU, temperatures, fans, memory and memory
+  pressure, disk, and Claude Code's sessions and memory.
 - **History:** the past 1 hour, 24 hours, 7 days or 30 days of CPU, temperatures, time the CPU
   spent throttled by heat (Intel), fans, memory, memory pressure and battery, from a reading
   every minute, kept 31 days in `~/.local/share/eso-box/health.db`. A break in a line is time
@@ -192,6 +192,12 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
 Hardware a machine doesn't have, or can't report, is left out. The out-of-memory count includes
 systemd-oomd's kills (Ubuntu runs it) only if your user can read the system journal: the `adm`
 or `systemd-journal` group, which Ubuntu's first user is in.
+
+Disk health comes from `sudo box/linux/setup-root.sh` (rerun it if you ran it before this was
+added): reading a drive's SMART data needs root, so it sets up a timer that reads the boot disk
+hourly into `/var/lib/eso-box/disk-health.json`. An NVMe drive shows how much of its rated life
+it has used, media errors, spare capacity and data written; other drives show pass or fail. A
+disk with no SMART data, like an SD card, gets no tile.
 
 It answers only your tailnet and the box itself, with or without `--firewall`. A rerun keeps it
 on; `./install.sh --no-health` removes it.

@@ -13,9 +13,9 @@ firewall=0
 if command -v apt-get >/dev/null; then
   echo "== packages"
   apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y git tmux jq python3 curl
+  DEBIAN_FRONTEND=noninteractive apt-get install -y git tmux jq python3 curl smartmontools
 else
-  echo "== not apt-based: install git, tmux, jq, python3 and curl yourself"
+  echo "== not apt-based: install git, tmux, jq, python3, curl and smartmontools yourself"
 fi
 
 echo "== keep running with the lid closed (no effect on desktops)"
@@ -76,6 +76,38 @@ WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
   systemctl enable --now eso-box-battery.service
+fi
+
+# The health page shows the boot disk's SMART data, which only root can read: a timer writes it
+# hourly where the page reads it. Behind LVM or encryption, lsblk -s walks down to the disk.
+disk=$(lsblk -nrso NAME,TYPE "$(findmnt -nvo SOURCE /)" 2>/dev/null | awk '$2 == "disk" { print "/dev/" $1; exit }') || true
+smartctl=$(command -v smartctl || true)
+rc=1
+[ -n "$disk" ] && [ -n "$smartctl" ] && { rc=0; "$smartctl" -i "$disk" >/dev/null 2>&1 || rc=$?; }
+if [ $((rc & 3)) = 0 ]; then  # bits 0-1: a bad command line, or the disk wouldn't open or identify
+  echo "== disk health for the health page: $disk's SMART data, read hourly"
+  cat > /etc/systemd/system/eso-box-disk-health.service <<EOF
+[Unit]
+Description=eso-box: $disk's SMART data into /var/lib/eso-box/disk-health.json, for the health page
+[Service]
+Type=oneshot
+StateDirectory=eso-box
+ExecStart=/bin/sh -c '$smartctl -j -a $disk > /var/lib/eso-box/disk-health.json.new; mv /var/lib/eso-box/disk-health.json.new /var/lib/eso-box/disk-health.json'
+EOF
+  cat > /etc/systemd/system/eso-box-disk-health.timer <<'EOF'
+[Unit]
+Description=eso-box: read the boot disk's SMART data hourly, for the health page
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now eso-box-disk-health.timer
+  systemctl start eso-box-disk-health.service
+else
+  echo "== disk health: skipped (${disk:-the boot disk} has no SMART data smartctl can read, e.g. an SD card)"
 fi
 
 echo "== start $user's services at boot, without anyone logging in (the Remote Control server)"
