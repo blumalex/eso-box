@@ -47,8 +47,19 @@ DISK_HEALTH = "/var/lib/eso-box/disk-health.json"
 KEEP_S = 31 * 86400
 CHECK_EVERY_S = 15 * 60
 GIB = 1 << 30
-# range -> (span, bucket) in seconds: 60 / 288 / 336 / 360 points
-RANGES = {"1h": (3600, 60), "24h": (86400, 300), "7d": (7 * 86400, 1800), "30d": (30 * 86400, 7200)}
+# A range is "<n>h" or "<n>d", 1 hour to 30 days. Its bucket is the smallest of these that keeps it
+# to 360 points: 1h -> 60 s (60 points), 6h -> 60 s (360), 24h -> 5 min (288), 7d -> 30 min (336), 30d -> 2 h (360)
+BUCKETS = [60, 120, 300, 600, 900, 1800, 3600, 7200]
+UNIT_S = {"h": 3600, "d": 86400}
+
+
+def parse_range(rng):
+    """'6h', '36h', '3d' -> (span, bucket) in seconds; None for anything else."""
+    m = re.fullmatch(r"(\d{1,4})([hd])", rng)
+    span = m and int(m[1]) * UNIT_S[m[2]]
+    if not span or not 3600 <= span <= 30 * 86400:
+        return None
+    return span, next(b for b in BUCKETS if span / b <= 360)
 
 READING_COLS = ["cpu", "load1", "mem_used", "mem_total", "swap_used", "cpu_temp", "ssd_temp",
                 "disk_used", "disk_total", "battery", "on_ac", "claude_n", "claude_mem",
@@ -384,7 +395,7 @@ def api_status():
 
 
 def api_series(rng):
-    span, step = RANGES[rng]
+    span, step = parse_range(rng)
     now = int(time.time())
     since = (now - span) // step * step  # bucket-aligned, so the first point sits on the left edge
     with db() as con:
@@ -414,7 +425,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(api_status())
         if url.path == "/api/series":
             rng = parse_qs(url.query).get("range", ["24h"])[0]
-            if rng in RANGES:
+            if parse_range(rng):
                 return self.send_json(api_series(rng))
         self.send(404, "text/plain", b"not found")
 

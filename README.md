@@ -184,10 +184,10 @@ the laptop needs this repo, for the client file. In Claude Code's `/config` on t
 - **Now:** restart needed, pending updates (Debian/Ubuntu), failed services, out-of-memory kills
   since boot, disk health, power (laptops), uptime, CPU, temperatures, fans, memory and memory
   pressure, disk, and Claude Code's sessions and memory.
-- **History:** the past 1 hour, 24 hours, 7 days or 30 days of CPU, temperatures, time the CPU
-  spent throttled by heat (Intel), fans, memory, memory pressure and battery, from a reading
-  every minute, kept 31 days in `~/.local/share/eso-box/health.db`. A break in a line is time
-  the box was off.
+- **History:** the past 1 hour, 6 hours, 24 hours, 7 days or 30 days, or any number of hours or
+  days up to 30 ("Last 36 hours"), of CPU, temperatures, time the CPU spent throttled by heat
+  (Intel), fans, memory, memory pressure and battery, from a reading every minute, kept 31 days
+  in `~/.local/share/eso-box/health.db`. A break in a line is time the box was off.
 
 Hardware a machine doesn't have, or can't report, is left out. The out-of-memory count includes
 systemd-oomd's kills (Ubuntu runs it) only if your user can read the system journal: the `adm`

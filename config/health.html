@@ -36,13 +36,21 @@ section { margin-bottom: 20px; }
 .icon.good { background: var(--good); }
 .icon.warning { background: var(--warning); color: #0b0b0b; }
 .icon.critical { background: var(--critical); }
-.filters { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
-.filters button {
+.filters { display: flex; gap: 6px 12px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chips button {
   font: inherit; font-size: 13px; color: var(--ink2); background: transparent;
   border: 1px solid transparent; border-radius: 8px; padding: 6px 12px; cursor: pointer;
 }
-.filters button:hover { background: var(--border); }
-.filters button[aria-pressed="true"] { color: var(--ink); font-weight: 600; background: var(--surface); border-color: var(--border); }
+.chips button:hover { background: var(--border); }
+.chips button[aria-pressed="true"] { color: var(--ink); font-weight: 600; background: var(--surface); border-color: var(--border); }
+.custom { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink2); border: 1px solid transparent; border-radius: 8px; padding: 2px 3px 2px 10px; }
+.custom.active { color: var(--ink); font-weight: 600; background: var(--surface); border-color: var(--border); }
+/* 16px: below that, iOS Safari zooms the page when the field takes focus */
+.custom input, .custom select { font: inherit; font-size: 16px; font-weight: 400; color: var(--ink); background: var(--page); border: 1px solid var(--axis); border-radius: 6px; padding: 2px 6px; }
+.custom input { width: 4.5em; }
+.custom button { font: inherit; font-size: 13px; color: var(--ink); background: var(--border); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.custom button:hover { background: var(--axis); }
 .bucket { margin: 0 0 10px; }
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 12px; }
 .loading .charts, .loading .tiles { opacity: 0.55; transition: opacity 0.15s; }
@@ -87,15 +95,28 @@ th { color: var(--ink2); font-weight: 600; position: sticky; top: 0; background:
 
 <section aria-labelledby="hist-h">
   <h2 id="hist-h">History</h2>
-  <div class="filters" role="group" aria-label="Time range" id="filters"></div>
+  <div class="filters">
+    <div class="chips" role="group" aria-label="Time range" id="chips"></div>
+    <form class="custom" id="custom" novalidate>
+      <label for="custom-n">Last</label>
+      <input id="custom-n" type="number" inputmode="numeric" pattern="[0-9]*" min="1" max="720" step="1">
+      <select id="custom-unit" aria-label="Unit"><option value="h">hours</option><option value="d">days</option></select>
+      <button type="submit">Show</button>
+    </form>
+  </div>
   <p class="note bucket" id="bucket"></p>
   <div class="charts" id="charts"></div>
 </section>
 
 <script>
-const RANGES = { "1h": "1 hour", "24h": "24 hours", "7d": "7 days", "30d": "30 days" };
-const BUCKET = { 60: "Each point is one 1-minute reading.", 300: "Each point averages 5 minutes.",
-                 1800: "Each point averages 30 minutes.", 7200: "Each point averages 2 hours." };
+const MIN = 60, HOUR = 3600, DAY = 86400, UNIT = { h: HOUR, d: DAY }, MAX_S = 30 * DAY;
+const CHIPS = ["1h", "6h", "24h", "7d", "30d"];
+// A range is "<n>h" or "<n>d", 1 hour to 30 days back (the server keeps 31 days of readings).
+const spanOf = r => { const m = /^(\d{1,4})([hd])$/.exec(r || ""); return m ? m[1] * UNIT[m[2]] : 0; };
+const validRange = r => spanOf(r) >= HOUR && spanOf(r) <= MAX_S;
+const rangeLabel = r => { const n = parseInt(r), u = r.endsWith("h") ? "hour" : "day"; return `${n} ${u}${n === 1 ? "" : "s"}`; };
+const bucketNote = step => step === MIN ? "Each point is one 1-minute reading."
+  : `Each point averages ${step < HOUR ? step / MIN + " minutes" : step === HOUR ? "1 hour" : step / HOUR + " hours"}.`;
 const pct = v => v == null ? "–" : (v < 10 ? v.toFixed(1) : Math.round(v)) + "%";
 const deg = v => v == null ? "–" : Math.round(v) + " °C";
 const gib = v => v == null ? "–" : v.toFixed(1) + " GiB";
@@ -124,7 +145,7 @@ const CHARTS = [
     { key: "on_ac", name: "Power", hidden: true, fmt: v => v == null ? "–" : v >= 1 ? "AC" : "on battery" }] },
 ];
 
-let range = RANGES[localStorage.getItem("range")] ? localStorage.getItem("range") : "24h";
+let range = validRange(localStorage.getItem("range")) ? localStorage.getItem("range") : "24h";
 let status = null, series = null;
 // Hardware this machine lacks (a desktop's battery, a SATA disk's missing NVMe sensor) reads as
 // null: its chart, series and legend entry are left out.
@@ -252,24 +273,27 @@ function yScale(def, rows) {
   }
   return niceScale(lo, hi);
 }
-function xTicks(since, now) {
+// At most 7 time labels: 1h -> every 15 min, 6h -> hourly, 24h -> every 4 h, 7d -> daily, 30d -> every 5 days.
+const TICK_STEPS = [15 * MIN, 30 * MIN, HOUR, 2 * HOUR, 3 * HOUR, 4 * HOUR, 6 * HOUR, 12 * HOUR, DAY, 2 * DAY, 5 * DAY, 7 * DAY];
+const tickStep = span => TICK_STEPS.find(t => span / t <= 7) || 7 * DAY;
+function xTicks(since, now, step) {
   const d = new Date(since * 1000), out = [];
-  if (range === "1h") { d.setSeconds(0, 0); d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15); }
-  else if (range === "24h") { d.setMinutes(0, 0, 0); d.setHours(Math.ceil(d.getHours() / 4) * 4); }
+  if (step < HOUR) { d.setSeconds(0, 0); d.setMinutes(Math.ceil(d.getMinutes() / (step / MIN)) * (step / MIN)); }
+  else if (step < DAY) { d.setMinutes(0, 0, 0); d.setHours(Math.ceil(d.getHours() / (step / HOUR)) * (step / HOUR)); }
   else { d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 1); }
   while (d.getTime() <= now * 1000) {
     out.push(d.getTime() / 1000);
-    if (range === "1h") d.setMinutes(d.getMinutes() + 15);
-    else if (range === "24h") d.setHours(d.getHours() + 4);
-    else d.setDate(d.getDate() + (range === "7d" ? 1 : 5));
+    if (step < HOUR) d.setMinutes(d.getMinutes() + step / MIN);
+    else if (step < DAY) d.setHours(d.getHours() + step / HOUR);
+    else d.setDate(d.getDate() + step / DAY);
   }
   return out;
 }
-function xLabel(t) {
+function xLabel(t, step, span) {
   const d = new Date(t * 1000);
-  if (range === "1h") return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  if (range === "24h") return d.toLocaleTimeString([], { hour: "numeric" });
-  if (range === "7d") return d.toLocaleDateString([], { weekday: "short", day: "numeric" });
+  if (step < HOUR) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (step < DAY) return span <= DAY ? d.toLocaleTimeString([], { hour: "numeric" }) : d.toLocaleString([], { weekday: "short", hour: "numeric" });
+  if (step === DAY) return d.toLocaleDateString([], { weekday: "short", day: "numeric" });
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 // A gap longer than 1.5 buckets (box off, service down) breaks the line instead of bridging it.
@@ -312,7 +336,7 @@ function card(def) {
 
 function renderTable(def, fig) {
   const rows = series.rows.slice().reverse();
-  const when = series.step >= 1800 ? dayTime : (range === "1h" ? time : dayTime);
+  const when = spanOf(series.range) <= HOUR ? time : dayTime;
   const table = el("table", {},
     el("thead", {}, el("tr", {}, el("th", {}, "Time"), ...present(def).map(x => el("th", {}, x.name)))),
     el("tbody", {}, ...rows.map(r => el("tr", {}, el("td", {}, when(r.t)),
@@ -323,7 +347,7 @@ function renderTable(def, fig) {
 function renderChart(def) {
   const fig = card(def), plot = fig.querySelector(".plot");
   if (fig.querySelector(".tbtn").getAttribute("aria-expanded") === "true") renderTable(def, fig);
-  const rows = series.rows, step = series.step, since = series.since, now = series.now;
+  const rows = series.rows, step = series.step, since = series.since, now = series.now, span = spanOf(series.range);
   const drawn = present(def).filter(x => !x.hidden);
   const ends = drawn.map(sr => {
     const last = rows.slice().reverse().find(r => r[sr.key] != null);
@@ -339,15 +363,16 @@ function renderChart(def) {
   const x = t => m.l + (t - since) / (now - since) * pw;
   const y = v => m.t + ph - (v - ys.lo) / (ys.hi - ys.lo) * ph;
   const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, tabindex: "0", role: "img",
-    "aria-label": `${def.title}, past ${RANGES[range]}. Use the left and right arrow keys to read values, or open the table.` });
+    "aria-label": `${def.title}, past ${rangeLabel(series.range)}. Use the left and right arrow keys to read values, or open the table.` });
 
   for (const v of ys.ticks) {
     svg.append(s("line", { x1: m.l, x2: m.l + pw, y1: y(v), y2: y(v), stroke: v === ys.lo ? cssVar("--axis") : cssVar("--grid"), "stroke-width": 1, "shape-rendering": "crispEdges" }));
     svg.append(s("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, String(v)));
   }
   let lastX = -Infinity;
-  for (const t of xTicks(since, now)) {
-    const xt = x(t), label = xLabel(t), half = textWidth(label) / 2;
+  const tstep = tickStep(span);
+  for (const t of xTicks(since, now, tstep)) {
+    const xt = x(t), label = xLabel(t, tstep, span), half = textWidth(label) / 2;
     if (xt - half < m.l - 4 || xt + half > m.l + pw + 4 || xt - half < lastX + 10) continue;  // thin ticks on narrow screens
     svg.append(s("text", { x: xt, y: H - 6, "text-anchor": "middle" }, label));
     lastX = xt + half;
@@ -388,7 +413,7 @@ function renderChart(def) {
       dots[k].setAttribute("visibility", v == null ? "hidden" : "visible");
       if (v != null) { dots[k].setAttribute("cx", px); dots[k].setAttribute("cy", y(v)); }
     });
-    tip.replaceChildren(el("div", { class: "when" }, range === "1h" ? time(r.t) : dayTime(r.t)),
+    tip.replaceChildren(el("div", { class: "when" }, span <= HOUR ? time(r.t) : dayTime(r.t)),
       ...present(def).map(sr => el("div", { class: "row" },
         el("i", { class: "key", style: sr.hidden ? "background: transparent" : `background: var(${sr.color})` }),
         el("strong", {}, sr.fmt(r[sr.key])), el("span", { class: "name" }, sr.name))));
@@ -416,7 +441,7 @@ function renderChart(def) {
 }
 
 function renderCharts() {
-  const first = status.first_reading, b = BUCKET[series.step] || "";
+  const first = status.first_reading, b = bucketNote(series.step);
   const partial = first && first > series.since + series.step ? ` Recording started ${dayTime(first)}; earlier is blank.` : "";
   document.getElementById("bucket").textContent = b + partial;
   const shown = CHARTS.filter(def => !def.needs || has(def.needs));
@@ -424,14 +449,30 @@ function renderCharts() {
   shown.forEach(renderChart);
 }
 
+const customForm = document.getElementById("custom"), customN = document.getElementById("custom-n"),
+      customUnit = document.getElementById("custom-unit");
+function setRange(k) { range = k; localStorage.setItem("range", k); renderFilters(); load(); }
 function renderFilters() {
-  const f = document.getElementById("filters");
-  f.replaceChildren(...Object.entries(RANGES).map(([k, label]) => {
-    const b = el("button", { type: "button", "aria-pressed": String(k === range) }, label);
-    b.onclick = () => { range = k; localStorage.setItem("range", k); renderFilters(); load(); };
+  document.getElementById("chips").replaceChildren(...CHIPS.map(k => {
+    const b = el("button", { type: "button", "aria-pressed": String(k === range) }, rangeLabel(k));
+    b.onclick = () => setRange(k);
     return b;
   }));
+  const custom = !CHIPS.includes(range);
+  customForm.classList.toggle("active", custom);
+  if (custom) { customN.value = parseInt(range); customUnit.value = range.slice(-1); }
+  customN.max = MAX_S / UNIT[customUnit.value];
 }
+customUnit.onchange = () => { customN.max = MAX_S / UNIT[customUnit.value]; };
+customForm.onsubmit = ev => {
+  ev.preventDefault();
+  const u = customUnit.value, n = Math.min(Math.round(Number(customN.value)), MAX_S / UNIT[u]);
+  if (!(n >= 1)) return customN.focus();
+  customN.value = n;  // past 30 days snaps to 30 days, the most the box keeps; no message to push the charts down
+  customN.blur();  // put the phone keypad away
+  const span = n * UNIT[u];
+  setRange(CHIPS.find(k => spanOf(k) === span) || n + u);  // "24 hours" lights the 24-hour chip
+};
 
 let seq = 0;
 async function load() {
