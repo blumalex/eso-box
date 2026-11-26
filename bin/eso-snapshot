@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# eso-box: save the sessions a terminal has open right now (tmux sessions with a client attached),
+# each with its folder and conversation, so that after a reboot eso-restore reopens just those,
+# under their old names. Run it just before you reboot (`! eso-snapshot` in any session): a
+# session's conversation ID changes after /clear. Sessions nobody has open are left out.
+set -euo pipefail
+out=~/.local/share/eso-box/snapshot.tsv
+reg=~/.claude/sessions # Claude Code's list of running sessions, one <pid>.json each (internal)
+rows="" n=0
+while read -r pid name; do
+  # eso-session runs `exec claude`, so the pane's process is its Claude.
+  if [ ! -f "$reg/$pid.json" ]; then
+    echo "eso-snapshot: $name has no Claude running, skipped" >&2
+    continue
+  fi
+  rows+="$name	$(jq -r '[.cwd, .sessionId, .name // ""] | @tsv' "$reg/$pid.json")"$'\n'
+  n=$((n + 1))
+done < <(tmux list-panes -a -f '#{&&:#{session_attached},#{&&:#{window_active},#{pane_active}}}' \
+  -F '#{pane_pid} #{session_name}' 2>/dev/null)
+# Nothing attached (every laptop asleep): keep the last snapshot rather than save an empty one.
+if [ "$n" = 0 ]; then
+  echo "eso-snapshot: no session has a terminal attached; kept the last snapshot" >&2
+  exit 1
+fi
+mkdir -p "$(dirname "$out")"
+printf '%s' "$rows" >"$out"
+echo "eso-snapshot: saved $n sessions to $out; they reopen at the next boot:"
+awk -F'\t' '{ print "  " $1 " · " $4 }' "$out"

@@ -77,7 +77,8 @@ What we ran into running a box, and how eso-box handles each one.
   `v10` (Chrome's fixed Linux key). Profiles from macOS or Windows Chrome don't: those encrypt
   cookies with an OS keychain key.
 - **Updates:** Ubuntu installs security updates by itself but doesn't reboot (a reboot ends tmux
-  sessions). Check `/var/run/reboot-required` now and then, and reboot when it's convenient.
+  sessions). Check `/var/run/reboot-required` now and then, and reboot when it's convenient,
+  after `eso-snapshot`, so the sessions you have open come back.
 - **Lid closed:** logind doesn't log lid events when told to ignore them; heat is the real
   caveat, so leave the vents clear.
 

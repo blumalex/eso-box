@@ -90,6 +90,7 @@ work beyond the cloud VM's limits, *"use Remote Control to run Claude Code on yo
 | `bin/eso-phone` | Lists sessions started from the phone, with the `/resume` line that continues one in a terminal |
 | `bin/eso-phone-sync` | Hook: `/resume` lists sessions started from the phone, named `☏ · <the phone's title>` |
 | `bin/eso-tab-stop` | Hook: the tab turns `✳` when Claude's turn ends, unless background agents are still running |
+| `bin/eso-snapshot`, `bin/eso-restore` | Before a reboot, `eso-snapshot` saves the sessions open in a terminal; at boot, `eso-restore` reopens each under its old name, in its conversation |
 | `bin/eso-update-check` | Hook and `boxls`: says when a newer eso-box is out; never installs anything |
 | `bin/eso-health`, `config/health.html` | The optional health page (`install.sh --health`, Linux): a reading a minute, served at `http://<box>:8090` to your tailnet only |
 | `config/tmux.conf` | Terminal tab shows `◐ <Claude's title> · <session>` while working, `✳` when done, `💤` 5 min later |
@@ -255,8 +256,12 @@ it off.
 - The phone's title for a phone-started session comes from an internal claude.ai API, as Claude
   Code itself calls it (untested on a Mac box). Without it, that session's terminal tab just says
   "Claude Code".
-- tmux sessions don't survive a reboot. The conversations do: `box`, then `claude --continue`
-  or `/resume`.
+- tmux sessions don't survive a reboot. The conversations do: run `eso-snapshot` before you
+  reboot, and the sessions open in a terminal come back at boot under their old names (`boxls`,
+  then `box <n>`). After a crash, or for the rest: `box`, then `claude --continue` or `/resume`.
+  `eso-snapshot` reads Claude Code's internal list of running sessions (`~/.claude/sessions`).
+  Tested on a throwaway tmux server started through systemd, not yet across a real reboot, and
+  untested on a Mac.
 - The Remote Control server serves one project folder. Sessions you start with `box` can `cd`
   anywhere.
 

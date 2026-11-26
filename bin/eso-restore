@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# eso-box: reopen the sessions eso-snapshot saved, each under its old tmux name and in its old
+# conversation (`claude --resume`, from the folder it started in; Claude Code re-enters a
+# worktree by itself), so `box <name>` lands back in it. install.sh runs it at boot (systemd user
+# service eso-restore on Linux, launchd agent com.eso-box.restore on macOS). Then the snapshot is
+# renamed .restored, so a later crash doesn't bring back the same sessions.
+#   eso-restore [file]   (default ~/.local/share/eso-box/snapshot.tsv)
+set -euo pipefail
+
+# At boot, PATH can lack tmux and claude (launchd's especially). Run once more under the login shell.
+if [ -z "${ESO_LOGIN:-}" ]; then
+  export ESO_LOGIN=1
+  # shellcheck disable=SC2016  # $0 and $@ belong to the login shell
+  exec "${SHELL:-/bin/bash}" -lc 'exec "$0" "$@"' "$0" "$@"
+fi
+
+snap=${1:-~/.local/share/eso-box/snapshot.tsv}
+[ -f "$snap" ] || exit 0
+while IFS=$'\t' read -r name cwd sid title; do
+  if tmux has-session -t "=$name" 2>/dev/null; then
+    echo "eso-restore: $name is already open, left alone" >&2
+    continue
+  fi
+  tmux new-session -d -s "$name" -c "$cwd" "exec ${SHELL:-/bin/bash} -lic 'exec claude --resume $sid'"
+  echo "eso-restore: $name · $title"
+done <"$snap"
+mv "$snap" "$snap.restored"

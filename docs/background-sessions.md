@@ -22,7 +22,7 @@ shell that started it, and `claude attach` from a fresh shell opened it with its
 | Survives the laptop disconnecting | yes | yes |
 | Phone | Remote Control | Remote Control |
 | Session crashes | gone | the supervisor restarts it |
-| Box reboots | gone; `/resume` by hand | listed as failed; attaching or replying restarts it from its saved conversation |
+| Box reboots | gone; `eso-snapshot` before a reboot brings back the open ones, else `/resume` by hand | listed as failed; attaching or replying restarts it from its saved conversation |
 | Claude Code updates | old sessions stay on the old version | idle sessions move by themselves; `claude respawn --all` |
 | Overview | `boxls` (names) | `claude agents` (state per session) |
 | Scrolling | normal terminal scrollback | fullscreen only (`PgUp`, `Ctrl+O`) |

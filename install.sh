@@ -8,7 +8,8 @@
 #               --no-health removes it
 # Installs the box tools into ~/.local/bin, the tab titles into ~/.tmux.conf, the hooks into
 # ~/.claude/settings.json (with a backup), and the Remote Control server as a systemd user
-# service (Linux) or a launchd agent (macOS). Safe to rerun: after a git pull, a rerun upgrades
+# service (Linux) or a launchd agent (macOS), and the same for eso-restore, which reopens at boot
+# the sessions eso-snapshot saved. Safe to rerun: after a git pull, a rerun upgrades
 # eso-box's own tab titles and hooks in place and keeps your settings. Update:
 #   git pull && ./install.sh --no-service
 # System settings (never sleep, restart after a power cut) are separate, run with sudo:
@@ -198,6 +199,50 @@ EOF
   esac
   echo "   watch it: tmux -L eso-rc attach -t rc   (detach: Ctrl+b d)"
 fi
+
+# Set up to run at the next boot (Linux) or login (macOS), not now: run now, it would use up a
+# snapshot taken for the next reboot.
+case $os in
+  Linux)
+    echo "== reopen sessions after a reboot: systemd user service eso-restore"
+    unit=~/.config/systemd/user/eso-restore.service
+    mkdir -p "$(dirname "$unit")"
+    cat > "$unit" <<'EOF'
+[Unit]
+Description=eso-box: reopen the sessions eso-snapshot saved (~/.local/bin/eso-restore)
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The tmux server eso-restore starts stays in this unit: stopping the unit must not end it.
+KillMode=process
+ExecStart=%h/.local/bin/eso-restore
+
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable eso-restore.service
+    ;;
+  Darwin)
+    echo "== reopen sessions after a reboot: launchd agent com.eso-box.restore"
+    mkdir -p ~/Library/LaunchAgents
+    cat > ~/Library/LaunchAgents/com.eso-box.restore.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.eso-box.restore</string>
+  <key>ProgramArguments</key>
+  <array><string>$HOME/.local/bin/eso-restore</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>AbandonProcessGroup</key><true/>
+</dict>
+</plist>
+EOF
+    ;;
+esac
+echo "   before a reboot: eso-snapshot (the sessions open in a terminal come back at boot)"
 
 health_unit=~/.config/systemd/user/eso-health.service
 if [ "$health" = on ] && [ "$os" = Linux ]; then

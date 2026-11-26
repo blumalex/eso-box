@@ -65,6 +65,7 @@ Linux, `launchctl bootout gui/$(id -u)/com.eso-box.rc` on macOS.
 | Short power cut (laptop box) | The battery carries it: same as an internet drop |
 | Power off long enough to shut down | Boots by itself when power returns (BIOS "power on with AC attach", or `pmset autorestart` on a Mac). tmux sessions and running commands are lost; the Remote Control server comes back by itself. Continue a conversation with `box`, then `claude --continue` or `/resume` |
 | Kernel crash or hard freeze | Reboots by itself within about a minute, then as above |
+| You reboot it (say, for updates) | Run `eso-snapshot` first (`! eso-snapshot` in any session). At boot, the sessions that had a terminal attached come back under their old names, each in its conversation: `boxls`, then `box <n>`. For the others: `box`, then `/resume` |
 | No network for over ~10 minutes | The Remote Control server exits and eso-rc-loop restarts it 30 s later. Interactive sessions reconnect by themselves |
 
 ## Other ways in
